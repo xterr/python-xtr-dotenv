@@ -1,6 +1,6 @@
 [project]
 name = "xtr-dotenv"
-version = "1.1.0"
+version = "1.2.0"
 description = "Layered .env files loaded into the environment, and the same layers behind a typed settings model."
 readme = "README.md"
 requires-python = ">=3.11"
