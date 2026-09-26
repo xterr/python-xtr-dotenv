@@ -7,7 +7,6 @@ import json
 from typing import TYPE_CHECKING, cast, final
 
 import pytest
-from rich.console import Console
 from xtr_console import ConsoleStyle, ExitCode
 from xtr_dependency_injection import KernelInterface, KernelReport
 
@@ -66,8 +65,10 @@ def _kernel(project_dir: Path, environment: str = "dev") -> _FakeKernel:
 def _style() -> ConsoleStyle:
     buffer = io.StringIO()
     return ConsoleStyle(
-        console=Console(file=buffer, width=100, no_color=True, force_terminal=False),
-        error_console=Console(file=buffer, width=100, no_color=True, force_terminal=False),
+        buffer,
+        buffer,
+        width=100,
+        decorated=False,
     )
 
 

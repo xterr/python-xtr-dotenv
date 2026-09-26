@@ -6,7 +6,6 @@ import io
 from typing import TYPE_CHECKING, final
 
 import pytest
-from rich.console import Console
 from xtr_console import ConsoleStyle, ExitCode
 from xtr_dependency_injection import KernelInterface, KernelReport
 
@@ -57,8 +56,7 @@ def _kernel(project_dir: Path, environment: str = "dev") -> _FakeKernel:
 
 def _capture() -> tuple[ConsoleStyle, io.StringIO]:
     buffer = io.StringIO()
-    console = Console(file=buffer, width=200, no_color=True, force_terminal=False)
-    return ConsoleStyle(console=console, error_console=console), buffer
+    return ConsoleStyle(buffer, buffer, width=200, decorated=False), buffer
 
 
 async def test_debug_lists_cascade_files(tmp_path: Path) -> None:
