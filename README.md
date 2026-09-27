@@ -144,6 +144,30 @@ attributes.
 `FormatError` and `VariableCircularReferenceError` are also `ValueError`s; `PathError` is
 also `OSError`. Existing `except` blocks keep working.
 
+## Use in an application
+
+Everything adding this package to an application on
+[xtr-dependency-injection](../xtr-dependency-injection) takes — and, read backwards, what removing it undoes.
+
+- **Install** — `uv add "xtr-dotenv[di,console]"`.
+- **Load** — the bundle does not load `.env` files. Call `Dotenv().boot_env(...)` at the top
+  of every entry point, before the kernel is built — see [Quick start](#quick-start).
+- **Activate** — `DotenvBundle: {"all": True}` in `BUNDLES` in `<app>/bundles.py`, imported
+  from `xtr_dotenv.bundle`. It only adds `dotenv:dump` and `debug:dotenv`, and only when the
+  console bundle is active.
+- **Brings along** — nothing.
+- **Configure** — optional: with no configuration the base file is
+  `%kernel.project_dir%/.env` and the environment is read from `APP_ENV`.
+  `<app>/config/dotenv.py`, a `@configure` function returning `DotenvConfig`, changes them —
+  see [Kernel / bundle](#kernel--bundle).
+- **Environment** — create `.env` with the defaults every machine shares, for example
+  `APP_ENV=dev`, and commit it.
+- **Ignore** — `.env.local`, `.env.*.local` and `.env.local.json`: per-machine overrides, and
+  what `dotenv:dump` writes.
+- **Remove** — drop the `BUNDLES` entry and every `boot_env(...)` call, delete
+  `<app>/config/dotenv.py`, then `uv remove xtr-dotenv`. The `.env` files stay yours.
+- **Check** — `debug:dotenv` lists each file of the cascade as loaded or missing.
+
 ## Kernel / bundle
 
 An application using [xtr-dependency-injection](../xtr-dependency-injection) lists
