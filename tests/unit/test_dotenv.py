@@ -338,3 +338,21 @@ def test_boot_env_reads_the_debug_flag_as_a_flag(tmp_path: Path, raw: str, expec
     _ = Dotenv(environ=environ).boot_env(str(base))
 
     assert environ["APP_DEBUG"] == expected
+
+
+def test_a_long_chain_of_references_is_no_cycle(tmp_path: Path) -> None:
+    file = _write(tmp_path, ".env", "A=${B}\nB=${C}\nC=${D}\nD=${E}\nE=${F}\nF=${G}\nG=leaf\n")
+    environ = _sandbox()
+
+    _ = Dotenv(environ=environ).load(str(file))
+
+    assert [environ[name] for name in "ABCDEFG"] == ["leaf"] * 7
+
+
+def test_a_cycle_at_the_end_of_a_long_chain_is_reported(tmp_path: Path) -> None:
+    file = _write(tmp_path, ".env", "A=${B}\nB=${C}\nC=${D}\nD=${E}\nE=${F}\nF=${G}\nG=${F}\n")
+
+    with pytest.raises(VariableCircularReferenceError) as info:
+        _ = Dotenv(environ=_sandbox()).load(str(file))
+
+    assert set(info.value.names) == set("ABCDEFG")

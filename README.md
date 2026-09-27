@@ -81,8 +81,9 @@ Dotenv(environ=sandbox).load_env("/etc/app/.env")
 | 6 | `path.{env}.local` | Same — a per-machine override for that environment |
 
 Later files override earlier ones. A **real** environment variable always wins over any file
-unless `override_existing_vars=True` is passed. `XTR_DOTENV_VARS` tracks which names came
-from a file so a later file may replace them; `XTR_DOTENV_PATH` records the base path so
+unless `override_existing_vars=True` is passed — `overload()` passes it — and then the file's
+value replaces it, the real one is gone, and the name counts as one a file set.
+`XTR_DOTENV_VARS` tracks which names came from a file so a later file may replace them; `XTR_DOTENV_PATH` records the base path so
 tooling can find it.
 
 ## Variable expansion
@@ -103,8 +104,9 @@ lines must be quoted.
 Expansion runs once every file of the cascade is read, so a value in `.env` may reference
 one only `.env.local` defines; a real environment variable wins inside an expansion as it
 does everywhere else. A self-referencing `A=${A:-x}` reads the value `A` has now (or the
-default) — it does not cycle. Anything still unresolved after five passes is a real cycle and
-raises `VariableCircularReferenceError`.
+default) — it does not cycle. Expansion repeats as long as each pass resolves something, so a
+chain of references resolves however long it is; values left waiting on each other are a real
+cycle and raise `VariableCircularReferenceError`.
 
 ## Typed settings from the cascade
 

@@ -46,7 +46,6 @@ TRACKING_VAR: Final = "XTR_DOTENV_VARS"
 PATH_VAR: Final = "XTR_DOTENV_PATH"
 """The base path the last cascade loaded, for tooling."""
 
-_MAX_EXPANSION_PASSES: Final = 5
 _BRACED: Final = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?:(:[-=])((?:[^}\\]|\\.)*))?\}")
 _UNBRACED: Final = re.compile(r"\$([A-Za-z_][A-Za-z0-9_]*)")
 _BRACE_CHECK: Final = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::[-=]((?:[^}\\]|\\.)*))?(\})?")
@@ -285,14 +284,12 @@ class Dotenv:
         also defines ``B`` when nothing else does.
 
         Raises:
-            VariableCircularReferenceError: If values still wait after the
-                last pass.
+            VariableCircularReferenceError: If a pass resolves nothing while
+                values still wait — they wait on each other.
         """
         resolved = {name: raw for name, (raw, single) in merged.items() if single}
         pending = {name: raw for name, (raw, single) in merged.items() if not single}
-        for _ in range(_MAX_EXPANSION_PASSES):
-            if not pending:
-                return resolved
+        while pending:
             waiting: dict[str, str] = {}
             for name, raw in pending.items():
                 expanded = self._expand_one(name, raw, merged, resolved, set(pending), override)

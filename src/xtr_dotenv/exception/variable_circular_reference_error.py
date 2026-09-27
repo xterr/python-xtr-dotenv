@@ -10,8 +10,9 @@ __all__ = ["VariableCircularReferenceError"]
 class VariableCircularReferenceError(DotenvError, ValueError):
     """Variables that reference each other, and never resolve.
 
-    Expansion runs up to five passes; anything still unresolved is treated
-    as a cycle rather than left with a suspicious empty value.
+    Expansion repeats while each pass resolves something; values still
+    unresolved once a pass resolves nothing wait on each other, and are
+    treated as a cycle rather than left with a suspicious empty value.
 
     Attributes:
         names: The variable names still unresolved after the final pass.
