@@ -403,11 +403,14 @@ def _read(path: str) -> str:
 
     Raises:
         PathError: If it cannot be read.
+        FormatError: If it is not UTF-8 text.
     """
     try:
         return Path(path).read_text(encoding="utf-8")
     except OSError as error:
         raise PathError(path) from error
+    except UnicodeDecodeError as error:
+        raise FormatError(path, 0, "not valid UTF-8 text") from error
 
 
 def _read_dump(path: str) -> dict[str, str] | None:

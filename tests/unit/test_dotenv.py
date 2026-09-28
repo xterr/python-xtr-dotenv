@@ -121,6 +121,16 @@ def test_load_missing_path_raises_path_error(tmp_path: Path) -> None:
     assert info.value.path == str(tmp_path / "nope")
 
 
+def test_a_file_that_is_not_utf8_is_a_format_error_naming_it(tmp_path: Path) -> None:
+    file = tmp_path / ".env"
+    _ = file.write_bytes("PASSWORD=caf\xe9\n".encode("latin-1"))
+
+    with pytest.raises(FormatError) as info:
+        _ = Dotenv(environ=_sandbox()).load(str(file))
+
+    assert (info.value.path, info.value.reason) == (str(file), "not valid UTF-8 text")
+
+
 def test_load_does_not_override_real_variable(tmp_path: Path) -> None:
     file = _write(tmp_path, ".env", "PORT=5000\n")
     environ = {"PORT": "8080"}
