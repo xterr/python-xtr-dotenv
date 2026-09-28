@@ -366,3 +366,36 @@ def test_a_cycle_at_the_end_of_a_long_chain_is_reported(tmp_path: Path) -> None:
         _ = Dotenv(environ=_sandbox()).load(str(file))
 
     assert set(info.value.names) == set("ABCDEFG")
+
+
+def test_an_environment_file_naming_another_environment_is_refused(tmp_path: Path) -> None:
+    base = _write(tmp_path, ".env", "APP_ENV=dev\nX=base\n")
+    overlay = _write(tmp_path, ".env.dev", "X=dev\nAPP_ENV=staging\n")
+
+    with pytest.raises(FormatError) as info:
+        _ = Dotenv(environ=_sandbox()).load_env(str(base))
+
+    assert (info.value.path, info.value.line) == (str(overlay), 2)
+
+
+def test_an_environment_file_repeating_its_own_environment_is_accepted(tmp_path: Path) -> None:
+    base = _write(tmp_path, ".env", "APP_ENV=dev\n")
+    _ = _write(tmp_path, ".env.dev", "APP_ENV=dev\nX=dev\n")
+    environ = _sandbox()
+
+    _ = Dotenv(environ=environ).load_env(str(base))
+
+    assert environ["X"] == "dev"
+
+
+def test_the_cascade_names_the_environment_and_every_file_it_considers(tmp_path: Path) -> None:
+    base = _write(tmp_path, ".env", "APP_ENV=staging\n")
+    environ = _sandbox()
+
+    env, files = Dotenv(environ=environ).cascade(str(base))
+
+    assert env == "staging"
+    assert files == tuple(
+        f"{base}{suffix}" for suffix in ("", ".local", ".staging", ".staging.local")
+    )
+    assert environ == {}

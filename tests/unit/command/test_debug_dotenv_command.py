@@ -100,3 +100,17 @@ async def test_debug_fails_on_bad_file(tmp_path: Path) -> None:
     kernel = _kernel(tmp_path)
     result = await DebugDotenvCommand()(style, kernel, DotenvConfig(path=".env"))
     assert result == ExitCode.FAILURE
+
+
+async def test_debug_lists_the_cascade_of_the_environment_the_files_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("APP_ENV", raising=False)
+    _ = (tmp_path / ".env").write_text("APP_ENV=staging\n", encoding="utf-8")
+    style, buffer = _capture()
+
+    result = await DebugDotenvCommand()(style, _kernel(tmp_path), DotenvConfig(path=".env"))
+
+    assert result == ExitCode.SUCCESS
+    assert str(tmp_path / ".env.staging") in buffer.getvalue()
+    assert str(tmp_path / ".env.dev") not in buffer.getvalue()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import final
 
@@ -40,8 +41,17 @@ class DebugDotenvCommand:
     ) -> int:
         """Print the cascade files and (optionally) one variable across them."""
         base_path = config.base_path(kernel.project_dir)
-        env = kernel.environment
-        cascade_paths = _cascade_paths(base_path, env, config.test_envs)
+        # The loader's own cascade, read against a copy of this process's
+        # environment: the files decide the environment unless a real
+        # variable does, exactly as they did when the process loaded them.
+        try:
+            env, files = Dotenv(env_key=config.env_key, environ=dict(os.environ)).cascade(
+                str(base_path), default_env=kernel.environment, test_envs=config.test_envs
+            )
+        except DotenvError as error:
+            io.error(str(error))
+            return ExitCode.FAILURE
+        cascade_paths = [Path(file) for file in files]
         io.section(f"Cascade for env={env!r} at {base_path}")
         io.table(
             ("File", "Status"),
@@ -74,17 +84,3 @@ class DebugDotenvCommand:
         elif name is not None:
             io.note(f"variable {name!r} not present in any cascade file")
         return ExitCode.SUCCESS
-
-
-def _cascade_paths(base: Path, env: str, test_envs: tuple[str, ...]) -> list[Path]:
-    """List the cascade files in the order the loader would try them."""
-    paths: list[Path] = [base]
-    dist = Path(f"{base}.dist")
-    if not base.exists() and dist.exists():
-        paths.append(dist)
-    if env not in test_envs:
-        paths.append(Path(f"{base}.local"))
-    if env != "local":
-        paths.append(Path(f"{base}.{env}"))
-        paths.append(Path(f"{base}.{env}.local"))
-    return paths

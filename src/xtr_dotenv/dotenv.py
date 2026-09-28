@@ -170,28 +170,77 @@ class Dotenv:
 
         Raises:
             PathError: If neither ``path`` nor ``path.dist`` can be read.
-            FormatError: On a line that cannot be parsed.
+            FormatError: On a line that cannot be parsed, or when an
+                environment's own file names another environment.
             VariableCircularReferenceError: If values reference each other in
                 a loop.
         """
         key = env_key if env_key is not None else self._env_key
         override = override_existing_vars
         self._environ[PATH_VAR] = path
+        _, _, merged = self._cascade(path, key, default_env, test_envs, override)
+        return self.populate(self._resolve(merged, override=override), override)
+
+    def cascade(
+        self,
+        path: str,
+        env_key: str | None = None,
+        default_env: str = "dev",
+        test_envs: tuple[str, ...] = ("test",),
+        override_existing_vars: bool = False,
+    ) -> tuple[str, tuple[str, ...]]:
+        """Return the environment :meth:`load_env` settles on, and the files it considers.
+
+        The files come in the order they are layered, the optional ones
+        whether they exist or not, so a tool can show what is missing too.
+        Nothing is written to the environment.
+
+        Raises:
+            PathError: If neither ``path`` nor ``path.dist`` can be read.
+            FormatError: On a line that cannot be parsed, or when an
+                environment's own file names another environment.
+        """
+        key = env_key if env_key is not None else self._env_key
+        env, considered, _ = self._cascade(
+            path, key, default_env, test_envs, override_existing_vars
+        )
+        return env, considered
+
+    def _cascade(
+        self,
+        path: str,
+        key: str,
+        default_env: str,
+        test_envs: tuple[str, ...],
+        override: bool,
+    ) -> tuple[str, tuple[str, ...], dict[str, Raw]]:
+        """Read the cascade: the environment, the files considered in order, what they bind."""
         merged: dict[str, Raw] = {}
         base = path if _is_file(path) or not _is_file(f"{path}.dist") else f"{path}.dist"
+        considered = [base]
         merged.update(_bindings(_read(base), base))
         env = self._current(key, merged, override)
         if env is None:
             merged[key] = (default_env, True)
             env = default_env
-        if env not in test_envs and _is_file(f"{path}.local"):
-            merged.update(_bindings(_read(f"{path}.local"), f"{path}.local"))
-            env = self._current(key, merged, override) or env
+        if env not in test_envs:
+            considered.append(f"{path}.local")
+            if _is_file(f"{path}.local"):
+                merged.update(_bindings(_read(f"{path}.local"), f"{path}.local"))
+                env = self._current(key, merged, override) or env
         if env != "local":
             for overlay in (f"{path}.{env}", f"{path}.{env}.local"):
-                if _is_file(overlay):
-                    merged.update(_bindings(_read(overlay), overlay))
-        return self.populate(self._resolve(merged, override=override), override)
+                considered.append(overlay)
+                if not _is_file(overlay):
+                    continue
+                data = _read(overlay)
+                merged.update(_bindings(data, overlay))
+                named = self._current(key, merged, override)
+                if named != env:
+                    # Its own overlays were chosen by the environment it now contradicts.
+                    reason = f"sets {key} to {named!r} in the files of environment {env!r}"
+                    raise FormatError(overlay, _line_of(data, key), reason)
+        return env, tuple(considered), merged
 
     def boot_env(
         self,
@@ -357,6 +406,14 @@ def _bindings(data: str, path: str) -> Iterable[tuple[str, Raw]]:
         if reason is not None:
             raise FormatError(path, line, reason)
         yield binding.key, (binding.value, single)
+
+
+def _line_of(data: str, name: str) -> int:
+    """Return the line of the last binding of ``name`` in ``data``, ``0`` when there is none."""
+    lines = [
+        binding.original.line for binding in parse_stream(StringIO(data)) if binding.key == name
+    ]
+    return lines[-1] if lines else 0
 
 
 def _expansion_error(raw: str) -> str | None:

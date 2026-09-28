@@ -80,6 +80,10 @@ Dotenv(environ=sandbox).load_env("/etc/app/.env")
 | 5 | `path.{env}` | When `env` is not `"local"` |
 | 6 | `path.{env}.local` | Same — a per-machine override for that environment |
 
+Files 5 and 6 were chosen by the environment, so one of them naming a different environment is
+a `FormatError` pointing at the line. `cascade(path)` returns the environment and these files,
+without loading anything — what `debug:dotenv` lists.
+
 Later files override earlier ones. A **real** environment variable always wins over any file
 unless `override_existing_vars=True` is passed — `overload()` passes it — and then the file's
 value replaces it, the real one is gone, and the name counts as one a file set.
@@ -211,8 +215,8 @@ def dotenv() -> DotenvConfig:
 
 | Command | What it does |
 | --- | --- |
-| `dotenv:dump [env]` | Compile the cascade for `env` (default: the kernel's env) into `<path>.local.json`. Runs on a fresh environ with only the env key, so real secrets never land in the dump |
-| `debug:dotenv [name]` | List the files that apply in cascade order (loaded / missing) and each variable's value per file, filtered by `name` when given |
+| `dotenv:dump [env]` | Compile the cascade for `env` (default: the kernel's env) into `<path>.local.json`. Runs on a fresh environ with only the env key, so real environment variables never land in the dump — but the `.local` files do, so gitignore it |
+| `debug:dotenv [name]` | List the files the loader's own cascade considers, for the environment the files and the real environment name (loaded / missing) and each variable's value per file, filtered by `name` when given |
 
 The commands are only registered when the console bundle is active; on a headless
 application the bundle is still valid and boots at zero config.
