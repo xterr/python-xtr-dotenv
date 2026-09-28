@@ -54,6 +54,7 @@ class _FakeKernel(KernelInterface):
 
 
 def _load_dump(path: Path) -> dict[str, str]:
+    # The dump is checked as JSON below.
     payload: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
     return cast("dict[str, str]", payload)
 
