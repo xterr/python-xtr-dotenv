@@ -152,6 +152,8 @@ source = ["src"]
 branch = true
 
 [tool.coverage.report]
+# CI runs the tests with --cov; a change taking coverage below this fails there.
+fail_under = 94
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",
