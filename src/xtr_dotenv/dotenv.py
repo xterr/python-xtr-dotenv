@@ -75,12 +75,17 @@ class Dotenv:
         debug_key: str = "APP_DEBUG",
         *,
         environ: MutableMapping[str, str] | None = None,
+        prod_envs: Iterable[str] = ("prod",),
     ) -> None:
-        """Build a loader that reads and writes ``environ`` (default: ``os.environ``)."""
+        """Build a loader that reads and writes ``environ`` (default: ``os.environ``).
+
+        ``prod_envs`` are the environments where :meth:`boot_env` leaves debug
+        off unless the debug key turns it on; it is on by default elsewhere.
+        """
         self._env_key = env_key
         self._debug_key = debug_key
         self._environ: MutableMapping[str, str] = environ if environ is not None else os.environ
-        self._prod_envs: tuple[str, ...] = ("prod",)
+        self._prod_envs: tuple[str, ...] = tuple(prod_envs)
 
     @property
     def env_key(self) -> str:
@@ -93,7 +98,10 @@ class Dotenv:
         return self._debug_key
 
     def set_prod_envs(self, envs: Iterable[str]) -> Self:
-        """Record which environments count as production, for :meth:`boot_env`."""
+        """Replace the environments where :meth:`boot_env` leaves debug off by default.
+
+        The same as passing ``prod_envs`` to the constructor.
+        """
         self._prod_envs = tuple(envs)
         return self
 

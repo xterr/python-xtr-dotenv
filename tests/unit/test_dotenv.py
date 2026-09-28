@@ -301,6 +301,15 @@ def test_set_prod_envs_shifts_debug_default(tmp_path: Path) -> None:
     assert environ["APP_DEBUG"] == "0"
 
 
+def test_prod_envs_given_to_the_constructor_shift_the_debug_default(tmp_path: Path) -> None:
+    _ = _write(tmp_path, ".env", "APP_ENV=staging\n")
+    environ: dict[str, str] = {}
+
+    _ = Dotenv(environ=environ, prod_envs=("staging",)).boot_env(str(tmp_path / ".env"))
+
+    assert environ["APP_DEBUG"] == "0"
+
+
 def test_a_value_may_reference_one_a_later_file_defines(tmp_path: Path) -> None:
     base = _write(tmp_path, ".env", "URL=http://${HOST}/api\nHOST=placeholder\n")
     _ = _write(tmp_path, ".env.local", "HOST=db.local\n")

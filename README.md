@@ -59,6 +59,10 @@ from app.kernel import kernel
 raise SystemExit(kernel.run(...))
 ```
 
+`boot_env` also sets `APP_DEBUG` to `"1"` or `"0"`: its own value read as a flag when it is set,
+otherwise on in every environment but those in `prod_envs` — `Dotenv(prod_envs=("prod",
+"staging"))`, `("prod",)` by default.
+
 The loader is stateless: hand it a `MutableMapping[str, str]` as `environ=` and no other
 code sees a thing.
 
