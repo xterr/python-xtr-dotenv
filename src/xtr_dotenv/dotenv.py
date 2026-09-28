@@ -33,7 +33,7 @@ from dotenv.parser import parse_stream
 from xtr_dotenv.exception import FormatError, PathError, VariableCircularReferenceError
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Mapping, MutableMapping
+    from collections.abc import Callable, Collection, Iterable, Mapping, MutableMapping
 
     Lookup = Callable[[str], "str | None"]
     Assign = Callable[[str, str], None]
@@ -55,6 +55,14 @@ _TRUE: Final = frozenset({"1", "true", "yes", "on"})
 _NUMBER: Final = re.compile(r"[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?")
 
 Raw = tuple[str, bool]
+
+
+@final
+class _Blocked:
+    """A reference to a value the current pass has not resolved yet."""
+
+
+_BLOCKED: Final = _Blocked()
 """A value as a file wrote it, and whether it was single-quoted (never expanded)."""
 
 
@@ -323,11 +331,11 @@ class Dotenv:
         if single:
             return raw
 
+        raws = {other: value for other, (value, _) in merged.items()}
+
         def lookup(other: str) -> str | None:
-            found = self._real(other, override)
-            if found is None and other in merged and other != name:
-                found = merged[other][0]
-            return found if found is not None else self._environ.get(other)
+            found = self._lookup(name, other, raws, (), override)
+            return None if isinstance(found, _Blocked) else found
 
         return _expand(raw, lookup, lambda _name, _value: None)
 
@@ -361,6 +369,31 @@ class Dotenv:
             raise VariableCircularReferenceError(tuple(pending))
         return resolved
 
+    def _lookup(
+        self,
+        name: str,
+        other: str,
+        values: Mapping[str, str],
+        pending: Collection[str],
+        override: bool,
+    ) -> str | _Blocked | None:
+        """Return what ``other`` reads as inside ``name``'s value — the precedence of the files.
+
+        A real environment variable (unless overriding), then a value from the
+        files, then the environment. ``_BLOCKED`` when ``other`` is still
+        ``pending``; ``A=${A:-x}`` reads the value ``A`` has now, or nothing.
+        """
+        if other == name:
+            return self._environ.get(name)
+        real = self._real(other, override)
+        if real is not None:
+            return real
+        if other in values:
+            return values[other]
+        if other in pending:
+            return _BLOCKED
+        return self._environ.get(other)
+
     def _expand_one(  # noqa: PLR0913, PLR0917 — the state of one resolution pass.
         self,
         name: str,
@@ -375,17 +408,11 @@ class Dotenv:
 
         def lookup(other: str) -> str | None:
             nonlocal blocked
-            if other == name:  # ``A=${A:-x}``: the value ``A`` has now, or the default
-                return self._environ.get(name)
-            real = self._real(other, override)
-            if real is not None:
-                return real
-            if other in resolved:
-                return resolved[other]
-            if other in pending:
+            found = self._lookup(name, other, resolved, pending, override)
+            if isinstance(found, _Blocked):
                 blocked = True
                 return None
-            return self._environ.get(other)
+            return found
 
         def assign(other: str, value: str) -> None:
             if other not in merged and other not in self._environ:
