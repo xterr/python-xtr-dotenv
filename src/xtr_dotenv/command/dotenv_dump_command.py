@@ -27,9 +27,10 @@ class DotenvDumpCommand:
     """Compile the layered cascade for one env into ``<path>.local.json``.
 
     The dump is what :meth:`Dotenv.boot_env` reads for a fast start. It is
-    computed on a **fresh environ** carrying only the env key (never real
-    secrets), so the file it writes is safe to commit and travels with the
-    build.
+    computed on a fresh environ carrying only the env key, so no real
+    environment variable lands in it — but it carries whatever the cascade's
+    files carry, the ``.local`` overlays included, so gitignore it as those
+    files are.
     """
 
     async def __call__(
