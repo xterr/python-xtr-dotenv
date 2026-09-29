@@ -243,6 +243,15 @@ def test_cascade_records_path_variable(tmp_path: Path) -> None:
     assert environ["XTR_DOTENV_PATH"] == base
 
 
+def test_a_failed_load_leaves_the_path_variable_as_it_was(tmp_path: Path) -> None:
+    environ: dict[str, str] = {}
+
+    with pytest.raises(PathError):
+        _ = Dotenv(environ=environ).load_env(str(tmp_path / ".env"))
+
+    assert "XTR_DOTENV_PATH" not in environ
+
+
 def test_cascade_real_env_wins_over_files(tmp_path: Path) -> None:
     _ = _write(tmp_path, ".env", "X=frombase\n")
     _ = _write(tmp_path, ".env.dev", "X=fromdev\n")

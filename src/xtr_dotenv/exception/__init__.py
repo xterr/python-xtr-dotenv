@@ -10,12 +10,14 @@ from __future__ import annotations
 
 from .dotenv_error import DotenvError
 from .format_error import FormatError
+from .invalid_argument_error import InvalidArgumentError
 from .path_error import PathError
 from .variable_circular_reference_error import VariableCircularReferenceError
 
 __all__ = [
     "DotenvError",
     "FormatError",
+    "InvalidArgumentError",
     "PathError",
     "VariableCircularReferenceError",
 ]

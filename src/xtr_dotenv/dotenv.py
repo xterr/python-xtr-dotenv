@@ -193,9 +193,18 @@ class Dotenv:
         """
         key = env_key if env_key is not None else self._env_key
         override = override_existing_vars
+        previous = self._environ.get(PATH_VAR)
         self._environ[PATH_VAR] = path
-        _, _, merged = self._cascade(path, key, default_env, test_envs, override)
-        return self.populate(self._resolve(merged, override=override), override)
+        try:
+            _, _, merged = self._cascade(path, key, default_env, test_envs, override)
+            resolved = self._resolve(merged, override=override)
+        except BaseException:
+            if previous is None:
+                _ = self._environ.pop(PATH_VAR, None)
+            else:
+                self._environ[PATH_VAR] = previous
+            raise
+        return self.populate(resolved, override)
 
     def cascade(
         self,

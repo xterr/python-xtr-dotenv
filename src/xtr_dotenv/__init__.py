@@ -25,6 +25,7 @@ from .dotenv_settings_source import DotenvSettingsSource
 from .exception import (
     DotenvError,
     FormatError,
+    InvalidArgumentError,
     PathError,
     VariableCircularReferenceError,
 )
@@ -43,6 +44,7 @@ __all__ = [
     "DotenvSettings",
     "DotenvSettingsSource",
     "FormatError",
+    "InvalidArgumentError",
     "PathError",
     "VariableCircularReferenceError",
     "__version__",

@@ -148,10 +148,11 @@ attributes.
 | Error | Raised when |
 | --- | --- |
 | `FormatError` | A line cannot be parsed (bad binding, key without `=`); carries `.path`, `.line`, `.reason` |
+| `InvalidArgumentError` | A `DotenvConfig` field is empty; carries `.reason` |
 | `PathError` | A file cannot be read; carries `.path` |
 | `VariableCircularReferenceError` | Variables reference each other and never resolve; carries `.names` |
 
-`FormatError` and `VariableCircularReferenceError` are also `ValueError`s; `PathError` is
+`FormatError`, `InvalidArgumentError` and `VariableCircularReferenceError` are also `ValueError`s; `PathError` is
 also `OSError`. Existing `except` blocks keep working.
 
 ## Use in an application
@@ -232,7 +233,7 @@ xtr_dotenv/
 ├── dotenv.py                       the loader: parse, load, overload, populate, load_env, boot_env
 ├── dotenv_settings_source.py       a pydantic-settings source that runs the cascade in a sandbox
 ├── dotenv_settings.py              BaseSettings base declaring the cascade behind the real env
-├── exception/                      DotenvError + FormatError, PathError, VariableCircularReferenceError
+├── exception/                      DotenvError + FormatError, InvalidArgumentError, PathError, …
 ├── command/                        dotenv:dump and debug:dotenv (xtr-console commands)
 └── bundle/                         DotenvBundle for xtr-dependency-injection
 ```

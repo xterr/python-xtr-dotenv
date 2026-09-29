@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from xtr_dotenv.exception.invalid_argument_error import InvalidArgumentError
+
 __all__ = ["DotenvConfig"]
 
 
@@ -27,7 +29,7 @@ class DotenvConfig:
         prod_envs: Environments considered production for debug defaulting.
 
     Raises:
-        ValueError: When any of ``path``, ``env_key``, ``debug_key``,
+        InvalidArgumentError: When any of ``path``, ``env_key``, ``debug_key``,
             ``test_envs`` or ``prod_envs`` is empty.
     """
 
@@ -41,19 +43,19 @@ class DotenvConfig:
         """Refuse combinations the loader would silently accept but not mean."""
         if not self.path:
             message = "path must not be empty"
-            raise ValueError(message)
+            raise InvalidArgumentError(message)
         if not self.env_key:
             message = "env_key must not be empty"
-            raise ValueError(message)
+            raise InvalidArgumentError(message)
         if not self.debug_key:
             message = "debug_key must not be empty"
-            raise ValueError(message)
+            raise InvalidArgumentError(message)
         if not self.test_envs:
             message = "test_envs must not be empty"
-            raise ValueError(message)
+            raise InvalidArgumentError(message)
         if not self.prod_envs:
             message = "prod_envs must not be empty"
-            raise ValueError(message)
+            raise InvalidArgumentError(message)
 
     def base_path(self, project_dir: Path) -> Path:
         """Return :attr:`path`, taken from ``project_dir`` when it is relative."""
