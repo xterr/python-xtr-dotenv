@@ -165,6 +165,10 @@ def test_the_cascade_fills_in_a_default(tmp_path) -> None:
 
 ## Use in an application
 
+`uv run xtr-recipes recipes:sync` applies the recipe shipped with this package: it lists
+`DotenvBundle`, writes `APP_ENV` in `.env`, and ignores the per-machine `.env.local` files. That is
+the steps below a recipe can do; the load step it prints for you to make.
+
 1. **Install** — `uv add "xtr-dotenv[di,console]"`. Plain `xtr-dotenv` gives the loader and the
    settings source; `di` adds the bundle, `console` the two commands.
 2. **Load** — the bundle loads nothing. Call `Dotenv().boot_env(...)` at the top of *every*

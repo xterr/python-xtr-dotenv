@@ -1,0 +1,28 @@
+# The recipe for xtr-dotenv: what *Use in an application* in the README takes,
+# as data. Keep the two in step — the README is the source.
+
+[bundles]
+# "<module>:<class>" = the environments it is listed with, exactly as in BUNDLES.
+# It adds dotenv:dump and debug:dotenv, and only when the console bundle is
+# active; loading the files is not the bundle's doing — see [notes].
+"xtr_dotenv.bundle:DotenvBundle" = { all = true }
+
+# No [files]: configuring is optional. With none the base file is
+# %kernel.project_dir%/.env and the environment is read from APP_ENV; an
+# application changing either writes config/dotenv.py itself.
+
+[env]
+# The defaults every machine shares go in .env, and .env is committed. The
+# environment the kernel runs in is the first of them.
+APP_ENV = "dev"
+
+[gitignore]
+# Per-machine overrides, and what `dotenv:dump` writes: regenerated, never
+# committed.
+lines = ["/.env.local", "/.env.*.local", "/.env.local.json"]
+
+[notes]
+steps = [
+  "Call Dotenv().boot_env(...) at the top of every entry point, before the kernel is built: the bundle loads no file itself.",
+]
+check = ["<script> debug:dotenv — each file of the cascade, loaded or missing"]

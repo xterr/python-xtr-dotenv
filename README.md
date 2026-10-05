@@ -161,6 +161,10 @@ Everything adding this package to an application on
 [xtr-dependency-injection](../xtr-dependency-injection) takes — and, read backwards, what removing it undoes.
 
 - **Install** — `uv add "xtr-dotenv[di,console]"`.
+- **Recipe** — `uv run xtr-recipes recipes:sync` does the *Activate*, *Environment* and *Ignore*
+  steps below: it lists `DotenvBundle`, writes `APP_ENV=dev` in `.env`, and ignores the per-machine
+  `.env.local`, `.env.*.local` and `.env.local.json`. It prints the *Load* step, which a recipe
+  cannot make for you.
 - **Load** — the bundle does not load `.env` files. Call `Dotenv().boot_env(...)` at the top
   of every entry point, before the kernel is built — see [Quick start](#quick-start).
 - **Activate** — `DotenvBundle: {"all": True}` in `BUNDLES` in `<app>/bundles.py`, imported
