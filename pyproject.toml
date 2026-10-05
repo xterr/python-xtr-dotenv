@@ -1,6 +1,6 @@
 [project]
 name = "xtr-dotenv"
-version = "2.0.0"
+version = "3.0.0"
 description = "Layered .env files loaded into the environment, and the same layers behind a typed settings model."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -27,10 +27,10 @@ dependencies = [
 
 [project.optional-dependencies]
 di = [
-    "xtr-dependency-injection>=2.0,<3",
+    "xtr-dependency-injection>=3.0,<4",
 ]
 console = [
-    "xtr-console>=2.0,<3",
+    "xtr-console>=3.0,<4",
 ]
 
 # Advertises the bundle so debug:bundles can name it when installed but not listed.
@@ -50,8 +50,8 @@ dev = [
     "pytest-cov>=5",
     "anyio>=4.0",
     "ty>=0.0.83",
-    "xtr-dependency-injection>=2.0,<3",
-    "xtr-console>=2.0,<3",
+    "xtr-dependency-injection>=3.0,<4",
+    "xtr-console>=3.0,<4",
 ]
 
 [build-system]
