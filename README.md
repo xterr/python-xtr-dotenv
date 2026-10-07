@@ -78,7 +78,7 @@ Dotenv(environ=sandbox).load_env("/etc/app/.env")
 | Order | File | When it applies |
 | --- | --- | --- |
 | 1 | `path` | Always, or `path.dist` when `path` is missing |
-| 2 | *(reads env key from environ; defaults to `default_env`)* | |
+| 2 | *(reads env key from environ; an unset or empty one takes `default_env`)* | |
 | 3 | `path.local` | Only outside `test_envs` — a developer's per-machine overrides |
 | 4 | *(re-reads env key)* | The `.local` file may have set a different environment |
 | 5 | `path.{env}` | When `env` is not `"local"` |
@@ -93,6 +93,10 @@ unless `override_existing_vars=True` is passed — `overload()` passes it — an
 value replaces it, the real one is gone, and the name counts as one a file set.
 `XTR_DOTENV_VARS` tracks which names came from a file so a later file may replace them; `XTR_DOTENV_PATH` records the base path so
 tooling can find it.
+
+Its value being empty changes nothing: `FOO=` is how a process says "disabled", and no file
+undoes it. The env key is the one exception — an empty one names no environment, so the
+cascade defaults it and may write that default back.
 
 ## Variable expansion
 
@@ -149,7 +153,7 @@ attributes.
 | --- | --- |
 | `FormatError` | A line cannot be parsed (bad binding, key without `=`); carries `.path`, `.line`, `.reason` |
 | `InvalidArgumentError` | A `DotenvConfig` field is empty; carries `.reason` |
-| `PathError` | A file cannot be read; carries `.path` |
+| `PathError` | A file cannot be read, or the dump cannot be written; carries `.path` |
 | `VariableCircularReferenceError` | Variables reference each other and never resolve; carries `.names` |
 
 `FormatError`, `InvalidArgumentError` and `VariableCircularReferenceError` are also `ValueError`s; `PathError` is
@@ -181,7 +185,8 @@ Everything adding this package to an application on
   what `dotenv:dump` writes.
 - **Remove** — drop the `BUNDLES` entry and every `boot_env(...)` call, delete
   `<app>/config/dotenv.py`, then `uv remove xtr-dotenv`. The `.env` files stay yours.
-- **Check** — `debug:dotenv` lists each file of the cascade as loaded or missing.
+- **Check** — `debug:dotenv` reports the environment, production and debug flags, and lists each
+  file of the cascade as loaded or missing (values masked unless `--show-values`).
 
 ## Kernel / bundle
 
@@ -225,7 +230,7 @@ def dotenv() -> DotenvConfig:
 | Command | What it does |
 | --- | --- |
 | `dotenv:dump [env]` | Compile the cascade for `env` (default: the kernel's env) into `<path>.local.json`. Runs on a fresh environ with only the env key, so real environment variables never land in the dump — but the `.local` files do, so gitignore it |
-| `debug:dotenv [name]` | List the files the loader's own cascade considers, for the environment the files and the real environment name (loaded / missing) and each variable's value per file, filtered by `name` when given |
+| `debug:dotenv [name] [--show-values]` | Report the environment, whether it is production (`prod_envs`) and the debug flag (`debug_key`), list the files the loader's own cascade considers (loaded / missing) and each variable's value per file, filtered by `name` when given. Values are masked unless `--show-values` is passed |
 
 The commands are only registered when the console bundle is active; on a headless
 application the bundle is still valid and boots at zero config.

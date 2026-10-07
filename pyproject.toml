@@ -31,6 +31,8 @@ di = [
 ]
 console = [
     "xtr-console>=3.0,<4",
+    "xtr-dependency-injection>=3.0,<4",
+    "anyio>=4.0",
 ]
 
 # Advertises the bundle so debug:bundles can name it when installed but not listed.

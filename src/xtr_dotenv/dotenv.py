@@ -8,7 +8,7 @@ without any one file knowing about the other.
 
 :class:`Dotenv` is the loader every layer runs through. It reads a base
 file, decides the environment (from a chosen variable, or a default when
-the variable is unset), applies the ``.env.local`` per-machine override
+the variable is unset or empty), applies the ``.env.local`` per-machine override
 outside test runs, and finally the environment-specific ``.env.{env}`` and
 ``.env.{env}.local`` files, in that order. A real environment variable
 always wins over anything a file says — when it is expanded into another
@@ -153,13 +153,15 @@ class Dotenv:
 
         A real (untracked) variable is never replaced unless
         ``override_existing_vars``; a name :data:`TRACKING_VAR` lists came
-        from a file, and a later file may replace it.
+        from a file, and a later file may replace it. The one value that does
+        not hold is an empty environment key: it names no environment, so the
+        cascade's default takes its place — see :meth:`_is_set`.
         """
         tracked = self._tracked()
         written = {
             name
             for name in values
-            if override_existing_vars or name not in self._environ or name in tracked
+            if override_existing_vars or not self._is_set(name) or name in tracked
         }
         for name in written:
             self._environ[name] = values[name]
@@ -245,7 +247,7 @@ class Dotenv:
         considered = [base]
         merged.update(_bindings(_read(base), base))
         env = self._current(key, merged, override)
-        if env is None:
+        if not env:
             merged[key] = (default_env, True)
             env = default_env
         if env not in test_envs:
@@ -301,7 +303,7 @@ class Dotenv:
                 override_existing_vars=override_existing_vars,
             )
         debug = self._environ.get(self._debug_key)
-        if debug is None:
+        if not debug:
             enabled = self._environ.get(self._env_key) not in self._prod_envs
         else:
             enabled = _flag(debug)
@@ -316,22 +318,43 @@ class Dotenv:
 
     def _dump_applies(self, dumped: Mapping[str, str], override: bool) -> bool:
         dumped_env = dumped.get(self._env_key)
-        current = self._environ.get(self._env_key, dumped_env)
+        current = self._environ.get(self._env_key) or dumped_env
         return override or dumped_env is None or current == dumped_env
 
     def _tracked(self) -> set[str]:
         raw = self._environ.get(TRACKING_VAR, "")
         return {name.strip() for name in raw.split(",") if name.strip()}
 
-    def _real(self, name: str, override: bool) -> str | None:
-        """Return ``name`` from the environment when it wins over the files, else ``None``."""
-        if override or name not in self._environ or name in self._tracked():
+    def _is_set(self, name: str) -> bool:
+        """Return whether the environment already carries a value for ``name``.
+
+        ``FOO=`` is a value: it is how a process says "disabled" — an empty
+        ``NO_PROXY`` or ``HTTP_PROXY`` turns the thing off — and no file may
+        undo that. The environment key is the one exception: a wrapper that
+        exports it unconditionally writes it empty when nothing chose an
+        environment, so an empty one reads as no choice and the cascade
+        defaults it.
+        """
+        value = self._environ.get(name)
+        if value is None:
+            return False
+        return bool(value) or name != self._env_key
+
+    def _real(self, name: str, override: bool, tracked: Collection[str]) -> str | None:
+        """Return ``name`` from the environment when it wins over the files, else ``None``.
+
+        A real variable wins whatever its value, the empty string included;
+        only an empty environment key counts as unset, as :meth:`_is_set`
+        explains.
+        """
+        if override or not self._is_set(name) or name in tracked:
             return None
         return self._environ[name]
 
     def _current(self, name: str, merged: Mapping[str, Raw], override: bool) -> str | None:
         """Return the value ``name`` will have once ``merged`` is populated."""
-        real = self._real(name, override)
+        tracked = self._tracked()
+        real = self._real(name, override, tracked)
         if real is not None:
             return real
         if name not in merged:
@@ -343,7 +366,7 @@ class Dotenv:
         raws = {other: value for other, (value, _) in merged.items()}
 
         def lookup(other: str) -> str | None:
-            found = self._lookup(name, other, raws, (), override)
+            found = self._lookup(name, other, raws, (), override, tracked=tracked)
             return None if isinstance(found, _Blocked) else found
 
         return _expand(raw, lookup, lambda _name, _value: None)
@@ -361,12 +384,15 @@ class Dotenv:
             VariableCircularReferenceError: If a pass resolves nothing while
                 values still wait — they wait on each other.
         """
+        tracked = self._tracked()
         resolved = {name: raw for name, (raw, single) in merged.items() if single}
         pending = {name: raw for name, (raw, single) in merged.items() if not single}
         while pending:
             waiting: dict[str, str] = {}
             for name, raw in pending.items():
-                expanded = self._expand_one(name, raw, merged, resolved, set(pending), override)
+                expanded = self._expand_one(
+                    name, raw, merged, resolved, set(pending), override, tracked
+                )
                 if expanded is None:
                     waiting[name] = raw
                 else:
@@ -378,13 +404,15 @@ class Dotenv:
             raise VariableCircularReferenceError(tuple(pending))
         return resolved
 
-    def _lookup(
+    def _lookup(  # noqa: PLR0913 — one resolution's precedence inputs, tracked threaded once.
         self,
         name: str,
         other: str,
         values: Mapping[str, str],
         pending: Collection[str],
         override: bool,
+        *,
+        tracked: Collection[str],
     ) -> str | _Blocked | None:
         """Return what ``other`` reads as inside ``name``'s value — the precedence of the files.
 
@@ -394,7 +422,7 @@ class Dotenv:
         """
         if other == name:
             return self._environ.get(name)
-        real = self._real(other, override)
+        real = self._real(other, override, tracked)
         if real is not None:
             return real
         if other in values:
@@ -411,13 +439,14 @@ class Dotenv:
         resolved: dict[str, str],
         pending: set[str],
         override: bool,
+        tracked: Collection[str],
     ) -> str | None:
         """Return ``raw`` expanded, or ``None`` when it references a value not resolved yet."""
         blocked = False
 
         def lookup(other: str) -> str | None:
             nonlocal blocked
-            found = self._lookup(name, other, resolved, pending, override)
+            found = self._lookup(name, other, resolved, pending, override, tracked=tracked)
             if isinstance(found, _Blocked):
                 blocked = True
                 return None

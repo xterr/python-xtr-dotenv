@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
-from typing import final
+from typing import Final, final
 
+import anyio.to_thread
 from xtr_console import ConsoleStyle, ExitCode, as_command
 from xtr_dependency_injection import (  # noqa: TC002 — engine reads annotations at runtime.
     Injected,
@@ -16,9 +18,12 @@ from xtr_dotenv.bundle.dotenv_config import (  # noqa: TC001 — engine reads an
     DotenvConfig,
 )
 from xtr_dotenv.dotenv import PATH_VAR, TRACKING_VAR, Dotenv
-from xtr_dotenv.exception import DotenvError
+from xtr_dotenv.exception import DotenvError, PathError
 
 __all__ = ["DotenvDumpCommand"]
+
+_WRITE_FLAGS: Final = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
+"""Create or truncate the dump, refusing a symbolic link where the platform can."""
 
 
 @as_command("dotenv:dump")
@@ -56,14 +61,31 @@ class DotenvDumpCommand:
             return ExitCode.FAILURE
         payload = _extract(sandbox)
         dump_path = Path(f"{base_path}.local.json")
-        _write(dump_path, json.dumps(payload, indent=2, sort_keys=True))
+        content = json.dumps(payload, indent=2, sort_keys=True)
+        await anyio.to_thread.run_sync(_write, dump_path, content)
         io.success(f"wrote {dump_path} ({len(payload)} values)")
         return ExitCode.SUCCESS
 
 
 def _write(path: Path, content: str) -> None:
-    """Blocking write, isolated so the async ``__call__`` stays lint-clean."""
-    _ = path.write_text(content, encoding="utf-8")
+    """Create the dump ``0o600`` and write it; the caller runs this off the event loop.
+
+    The dump carries whatever the ``.local`` layers carry, so it is a
+    secret-bearing file: it is created private, and an existing world-readable
+    one is tightened on its descriptor before a byte of content reaches it, so
+    the dump never sits in a file that is still wide. A symbolic link at the
+    path is refused rather than written through — where the platform offers
+    ``O_NOFOLLOW``, the open refuses one planted after the check too.
+
+    Raises:
+        PathError: When a symbolic link sits at the dump path.
+    """
+    if path.is_symlink():
+        raise PathError(str(path))
+    descriptor = os.open(path, _WRITE_FLAGS, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        os.fchmod(descriptor, 0o600)
+        _ = handle.write(content)
 
 
 def _extract(sandbox: dict[str, str]) -> dict[str, str]:

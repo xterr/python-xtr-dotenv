@@ -31,8 +31,10 @@ model from the same layers without ever writing into `os.environ`.
 | 4 | `path.{env}.local` | Same; per-machine, per-environment |
 
 The environment comes from `env_key` (`APP_ENV` by default), read after file 1 and again after
-file 2 — `.env.local` may change it. Files 3 and 4 were chosen by that environment, so one of
-them setting `env_key` to something else is a `FormatError`. Which files to commit:
+file 2 — `.env.local` may change it. An unset **or empty** `env_key` names no environment, so
+`default_env` takes over; every other real variable wins over the files whatever its value,
+empty included. Files 3 and 4 were chosen by that environment, so one of them setting
+`env_key` to something else is a `FormatError`. Which files to commit:
 
 | File | Commit | Holds |
 | --- | --- | --- |
@@ -139,7 +141,7 @@ is read once. To place the source yourself in `settings_customise_sources`, use
 | Command | Does |
 | --- | --- |
 | `dotenv:dump [env]` | Compile the cascade for `env` (default: the kernel's) into `<path>.local.json`, which `boot_env` then reads instead of the files. Computed on a fresh environ holding only the env key, so no real variable lands in it — the `.local` layers do, so keep it out of git |
-| `debug:dotenv [name]` | List every cascade file as loaded or missing, then each variable's value per file, filtered to `name` when given |
+| `debug:dotenv [name] [--show-values]` | Report the environment, whether it is production (`prod_envs`) and the debug flag (`debug_key`), then list every cascade file as loaded or missing and each variable's value per file, filtered to `name` when given. Values are masked unless `--show-values` |
 
 Both need `DotenvBundle` and an active console bundle.
 
@@ -200,7 +202,8 @@ the steps below a recipe can do; the load step it prints for you to make.
 6. **Environment** — commit a `.env` with the defaults every machine shares, e.g. `APP_ENV=dev`.
    The commands describe that cascade; they do not replace step 2.
 7. **Ignore** — add `.env.local`, `.env.*.local` and `.env.local.json` to `.gitignore`.
-8. **Check** — `debug:dotenv` lists each cascade file as loaded or missing; `debug:bundles` shows
+8. **Check** — `debug:dotenv` reports the environment, production and debug flags, and lists each
+   cascade file as loaded or missing (values masked unless `--show-values`); `debug:bundles` shows
    `dotenv` as `active`.
 9. **Remove** — drop the `BUNDLES` entry and every `boot_env(...)` call, delete
    `<app>/config/dotenv.py`, then `uv remove xtr-dotenv`. The `.env` files stay yours.
@@ -213,7 +216,7 @@ All derive from `DotenvError` and carry typed attributes:
 | --- | --- |
 | `FormatError` | A line cannot be parsed, a key has no `=`, an overlay names another environment (`.path`, `.line`, `.reason`) |
 | `InvalidArgumentError` | A `DotenvConfig` field is empty (`.reason`) |
-| `PathError` | A file cannot be read (`.path`) |
+| `PathError` | A file cannot be read, or the dump written (`.path`) |
 | `VariableCircularReferenceError` | Values wait on each other forever (`.names`) |
 
 `FormatError`, `InvalidArgumentError` and `VariableCircularReferenceError` are also `ValueError`s;

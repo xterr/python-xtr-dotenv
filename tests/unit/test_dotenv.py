@@ -202,6 +202,26 @@ def test_cascade_uses_default_env_when_key_unset(tmp_path: Path) -> None:
     assert environ["APP_ENV"] == "staging"
 
 
+def test_cascade_empty_env_key_falls_back_to_default(tmp_path: Path) -> None:
+    # Reproduces E1: an empty APP_ENV must behave exactly like an unset one.
+    base = _write(tmp_path, ".env", "X=base\n")
+    environ = {"APP_ENV": ""}
+
+    env, files = Dotenv(environ=environ).cascade(str(base), default_env="dev")
+
+    assert env == "dev"
+    assert files == tuple(f"{base}{suffix}" for suffix in ("", ".local", ".dev", ".dev.local"))
+
+
+def test_load_env_empty_env_key_falls_back_to_default(tmp_path: Path) -> None:
+    base = _write(tmp_path, ".env", "X=base\n")
+    environ = {"APP_ENV": ""}
+
+    _ = Dotenv(environ=environ).load_env(str(base), default_env="staging")
+
+    assert environ["APP_ENV"] == "staging"
+
+
 def test_cascade_env_from_env_file(tmp_path: Path) -> None:
     _ = _write(tmp_path, ".env", "APP_ENV=prod\n")
     environ: dict[str, str] = {}
@@ -260,6 +280,25 @@ def test_cascade_real_env_wins_over_files(tmp_path: Path) -> None:
     assert environ["X"] == "real"
 
 
+def test_an_empty_real_variable_still_wins_over_a_file(tmp_path: Path) -> None:
+    # Only the environment key reads an empty value as no choice; FOO= means disabled.
+    base = _write(tmp_path, ".env", "FOO=from-file\n")
+    environ = {"APP_ENV": "dev", "FOO": ""}
+
+    _ = Dotenv(environ=environ).load_env(str(base))
+
+    assert environ["FOO"] == ""
+
+
+def test_an_empty_real_variable_wins_inside_an_expansion_too(tmp_path: Path) -> None:
+    base = _write(tmp_path, ".env", "HOST=from-file\nURL=http://${HOST}/x\n")
+    environ = {"APP_ENV": "dev", "HOST": ""}
+
+    _ = Dotenv(environ=environ).load_env(str(base))
+
+    assert (environ["HOST"], environ["URL"]) == ("", "http:///x")
+
+
 # ─────────────────────────────────────────────────────────────
 # boot_env
 # ─────────────────────────────────────────────────────────────
@@ -282,10 +321,32 @@ def test_boot_env_falls_back_when_dump_env_mismatches(tmp_path: Path) -> None:
     assert environ["X"] == "fromfile"
 
 
+def test_boot_env_reads_the_dump_when_the_environment_key_is_empty(tmp_path: Path) -> None:
+    # An empty environment key is no choice, so the dump's own environment applies.
+    _ = _write(tmp_path, ".env", "APP_ENV=prod\nX=fromfile\n")
+    _ = _write(tmp_path, ".env.local.json", '{"APP_ENV": "prod", "X": "fromdump"}')
+    environ = {"APP_ENV": ""}
+
+    _ = Dotenv(environ=environ).boot_env(str(tmp_path / ".env"))
+
+    assert (environ["APP_ENV"], environ["X"]) == ("prod", "fromdump")
+
+
 def test_boot_env_normalises_debug_true_for_dev(tmp_path: Path) -> None:
     _ = _write(tmp_path, ".env", "APP_ENV=dev\n")
     environ: dict[str, str] = {}
     _ = Dotenv(environ=environ).boot_env(str(tmp_path / ".env"))
+    assert environ["APP_DEBUG"] == "1"
+
+
+def test_boot_env_empty_env_key_falls_back_to_default(tmp_path: Path) -> None:
+    # E1: empty APP_ENV boots the default env, and debug follows that env.
+    base = _write(tmp_path, ".env", "X=1\n")
+    environ = {"APP_ENV": ""}
+
+    _ = Dotenv(environ=environ).boot_env(str(base), default_env="dev")
+
+    assert environ["APP_ENV"] == "dev"
     assert environ["APP_DEBUG"] == "1"
 
 

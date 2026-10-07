@@ -25,4 +25,6 @@ lines = ["/.env.local", "/.env.*.local", "/.env.local.json"]
 steps = [
   "Call Dotenv().boot_env(...) at the top of every entry point, before the kernel is built: the bundle loads no file itself.",
 ]
-check = ["<script> debug:dotenv — each file of the cascade, loaded or missing"]
+check = [
+  "<script> debug:dotenv — the environment, production and debug flags, and each file of the cascade, loaded or missing (values masked unless --show-values)",
+]
