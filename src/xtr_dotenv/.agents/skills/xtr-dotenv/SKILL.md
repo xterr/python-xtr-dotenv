@@ -17,7 +17,8 @@ model from the same layers without ever writing into `os.environ`.
   environment variable beats all of them.
 - A typed model: subclass `DotenvSettings`, set the `_dotenv_*` class variables.
 - A test: hand the loader its own mapping — `Dotenv(environ={})` touches nothing else.
-- Commands (with the `console` extra and `DotenvBundle`): `dotenv:dump`, `debug:dotenv`.
+- Commands (`DotenvBundle`, with xtr-dependency-injection and xtr-console installed beside the
+  package — neither is a dependency): `dotenv:dump`, `debug:dotenv`.
 
 ## The cascade
 
@@ -171,8 +172,9 @@ def test_the_cascade_fills_in_a_default(tmp_path) -> None:
 `DotenvBundle`, writes `APP_ENV` in `.env`, and ignores the per-machine `.env.local` files. That is
 the steps below a recipe can do; the load step it prints for you to make.
 
-1. **Install** — `uv add "xtr-dotenv[di,console]"`. Plain `xtr-dotenv` gives the loader and the
-   settings source; `di` adds the bundle, `console` the two commands.
+1. **Install** — `uv add xtr-dotenv xtr-dependency-injection`: the bundle needs the container
+   installed beside it, never as an extra. Plain `xtr-dotenv` is the loader and the settings
+   source; install xtr-console beside it for the two commands.
 2. **Load** — the bundle loads nothing. Call `Dotenv().boot_env(...)` at the top of *every*
    entry point, before the kernel is built.
 3. **Activate** — `DotenvBundle: {"all": True}` in `BUNDLES` in `<app>/bundles.py`

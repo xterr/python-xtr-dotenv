@@ -23,15 +23,6 @@ dependencies = [
     "pydantic-settings>=2.4,<3",
     "python-dotenv>=1.0,<2",
     "typing-extensions>=4.4",
-]
-
-[project.optional-dependencies]
-di = [
-    "xtr-dependency-injection>=4.0,<5",
-]
-console = [
-    "xtr-console>=4.0,<5",
-    "xtr-dependency-injection>=4.0,<5",
     "anyio>=4.0",
 ]
 

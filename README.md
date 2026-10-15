@@ -34,12 +34,16 @@ source that feeds a typed model from the same cascade — without ever touching
 ## Install
 
 ```sh
-uv add xtr-dotenv                 # the loader and the settings source
-uv add "xtr-dotenv[di]"           # + a DotenvBundle for xtr-dependency-injection
-uv add "xtr-dotenv[console]"      # + the dotenv:dump and debug:dotenv commands
+uv add xtr-dotenv                           # the loader and the settings source
+uv add xtr-dotenv xtr-dependency-injection  # + the container, for the DotenvBundle
+uv add xtr-console                          # beside it: + the dotenv:dump and debug:dotenv commands
 ```
 
-Requires Python 3.11+.
+Requires Python 3.11+. Depends on `pydantic-settings`, `python-dotenv`, `typing-extensions` and
+`anyio` — not on the container: the bundle is used when
+[xtr-dependency-injection](../xtr-dependency-injection) is installed beside the package, never as
+an extra, and the loader works without it. The two commands also need
+[xtr-console](../xtr-console) installed beside it.
 
 ## Quick start
 
@@ -164,7 +168,9 @@ also `OSError`. Existing `except` blocks keep working.
 Everything adding this package to an application on
 [xtr-dependency-injection](../xtr-dependency-injection) takes — and, read backwards, what removing it undoes.
 
-- **Install** — `uv add "xtr-dotenv[di,console]"`.
+- **Install** — `uv add xtr-dotenv xtr-dependency-injection`: the bundle needs the container
+  installed beside it, never as an extra. Install xtr-console beside it for the `dotenv:dump`
+  and `debug:dotenv` commands.
 - **Recipe** — `uv run xtr-recipes recipes:sync` does the *Activate*, *Environment* and *Ignore*
   steps below: it lists `DotenvBundle`, writes `APP_ENV=dev` in `.env`, and ignores the per-machine
   `.env.local`, `.env.*.local` and `.env.local.json`. It prints the *Load* step, which a recipe
@@ -190,13 +196,14 @@ Everything adding this package to an application on
 
 ## Kernel / bundle
 
-An application using [xtr-dependency-injection](../xtr-dependency-injection) lists
-`DotenvBundle` in its `app/bundles.py`. **The bundle does not load `.env` files** —
-`Dotenv().boot_env(...)` runs before the kernel is built. What the bundle contributes is
-the two commands that need the kernel to know its project directory:
+With [xtr-dependency-injection](../xtr-dependency-injection) installed beside the package — it is
+not a dependency, and nothing outside `xtr_dotenv.bundle` and the commands it loads needs it — an
+application lists `DotenvBundle` in its `app/bundles.py`. **The bundle does not load `.env`
+files** — `Dotenv().boot_env(...)` runs before the kernel is built. What the bundle contributes
+is the two commands that need the kernel to know its project directory:
 
 ```sh
-uv add "xtr-dotenv[di,console]"
+uv add xtr-dotenv xtr-dependency-injection xtr-console
 ```
 
 ```python
@@ -232,8 +239,9 @@ def dotenv() -> DotenvConfig:
 | `dotenv:dump [env]` | Compile the cascade for `env` (default: the kernel's env) into `<path>.local.json`. Runs on a fresh environ with only the env key, so real environment variables never land in the dump — but the `.local` files do, so gitignore it |
 | `debug:dotenv [name] [--show-values]` | Report the environment, whether it is production (`prod_envs`) and the debug flag (`debug_key`), list the files the loader's own cascade considers (loaded / missing) and each variable's value per file, filtered by `name` when given. Values are masked unless `--show-values` is passed |
 
-The commands are only registered when the console bundle is active; on a headless
-application the bundle is still valid and boots at zero config.
+The commands are only registered when the console bundle is active — xtr-console installed
+beside the package; on a headless application the bundle is still valid and boots at zero
+config.
 
 ## Layout
 
@@ -254,7 +262,7 @@ Developed in the [python-xtr](https://github.com/xterr/python-xtr) monorepo, und
 repository is a read-only copy, so send issues and pull requests to the monorepo.
 
 ```sh
-uv sync --all-extras
+uv sync
 uv run ruff check
 uv run ruff format --check
 uv run basedpyright
