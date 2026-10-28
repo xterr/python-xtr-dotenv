@@ -177,20 +177,20 @@ Everything adding this package to an application on
   cannot make for you.
 - **Load** — the bundle does not load `.env` files. Call `Dotenv().boot_env(...)` at the top
   of every entry point, before the kernel is built — see [Quick start](#quick-start).
-- **Activate** — `DotenvBundle: {"all": True}` in `BUNDLES` in `<app>/bundles.py`, imported
+- **Activate** — `DotenvBundle: {"all": True}` in `BUNDLES` in `<app>/config/bundles.py`, imported
   from `xtr_dotenv.bundle`. It only adds `dotenv:dump` and `debug:dotenv`, and only when the
   console bundle is active.
 - **Brings along** — nothing.
 - **Configure** — optional: with no configuration the base file is
   `%kernel.project_dir%/.env` and the environment is read from `APP_ENV`.
-  `<app>/config/dotenv.py`, a `@configure` function returning `DotenvConfig`, changes them —
+  `<app>/config/packages/dotenv.py`, a `@configure` function returning `DotenvConfig`, changes them —
   see [Kernel / bundle](#kernel--bundle).
 - **Environment** — create `.env` with the defaults every machine shares, for example
   `APP_ENV=dev`, and commit it.
 - **Ignore** — `.env.local`, `.env.*.local` and `.env.local.json`: per-machine overrides, and
   what `dotenv:dump` writes.
 - **Remove** — drop the `BUNDLES` entry and every `boot_env(...)` call, delete
-  `<app>/config/dotenv.py`, then `uv remove xtr-dotenv`. The `.env` files stay yours.
+  `<app>/config/packages/dotenv.py`, then `uv remove xtr-dotenv`. The `.env` files stay yours.
 - **Check** — `debug:dotenv` reports the environment, production and debug flags, and lists each
   file of the cascade as loaded or missing (values masked unless `--show-values`).
 
@@ -198,7 +198,7 @@ Everything adding this package to an application on
 
 With [xtr-dependency-injection](../xtr-dependency-injection) installed beside the package — it is
 not a dependency, and nothing outside `xtr_dotenv.bundle` and the commands it loads needs it — an
-application lists `DotenvBundle` in its `app/bundles.py`. **The bundle does not load `.env`
+application lists `DotenvBundle` in its `app/config/bundles.py`. **The bundle does not load `.env`
 files** — `Dotenv().boot_env(...)` runs before the kernel is built. What the bundle contributes
 is the two commands that need the kernel to know its project directory:
 
@@ -207,14 +207,14 @@ uv add xtr-dotenv xtr-dependency-injection xtr-console
 ```
 
 ```python
-# app/bundles.py
+# app/config/bundles.py
 from xtr_dotenv.bundle import DotenvBundle
 
 BUNDLES = {DotenvBundle: {"all": True}}
 ```
 
 ```python
-# app/config/dotenv.py
+# app/config/packages/dotenv.py
 from xtr_dependency_injection import configure
 from xtr_dotenv.bundle import DotenvConfig
 

@@ -177,14 +177,14 @@ the steps below a recipe can do; the load step it prints for you to make.
    source; install xtr-console beside it for the two commands.
 2. **Load** — the bundle loads nothing. Call `Dotenv().boot_env(...)` at the top of *every*
    entry point, before the kernel is built.
-3. **Activate** — `DotenvBundle: {"all": True}` in `BUNDLES` in `<app>/bundles.py`
+3. **Activate** — `DotenvBundle: {"all": True}` in `BUNDLES` in `<app>/config/bundles.py`
    (`from xtr_dotenv.bundle import DotenvBundle`). It only contributes the commands.
 4. **Brings along** — nothing.
 5. **Configure** — optional; by default the base file is `%kernel.project_dir%/.env` and the
    environment comes from `APP_ENV`:
 
    ```python
-   # <app>/config/dotenv.py
+   # <app>/config/packages/dotenv.py
    from xtr_dependency_injection import configure
    from xtr_dotenv.bundle import DotenvConfig
 
@@ -208,7 +208,7 @@ the steps below a recipe can do; the load step it prints for you to make.
    cascade file as loaded or missing (values masked unless `--show-values`); `debug:bundles` shows
    `dotenv` as `active`.
 9. **Remove** — drop the `BUNDLES` entry and every `boot_env(...)` call, delete
-   `<app>/config/dotenv.py`, then `uv remove xtr-dotenv`. The `.env` files stay yours.
+   `<app>/config/packages/dotenv.py`, then `uv remove xtr-dotenv`. The `.env` files stay yours.
 
 ## Errors
 

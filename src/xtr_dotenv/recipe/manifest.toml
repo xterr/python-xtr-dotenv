@@ -9,7 +9,7 @@
 
 # No [files]: configuring is optional. With none the base file is
 # %kernel.project_dir%/.env and the environment is read from APP_ENV; an
-# application changing either writes config/dotenv.py itself.
+# application changing either writes config/packages/dotenv.py itself.
 
 [env]
 # The defaults every machine shares go in .env, and .env is committed. The
