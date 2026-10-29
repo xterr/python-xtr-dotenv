@@ -30,6 +30,10 @@ class _FakeKernel(KernelInterface):
         return "test"
 
     @property
+    def package(self) -> str:
+        return "test"
+
+    @property
     def environment(self) -> str:
         return self._environment
 
