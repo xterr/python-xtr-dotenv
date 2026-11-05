@@ -7,9 +7,13 @@
 # active; loading the files is not the bundle's doing — see [notes].
 "xtr_dotenv.bundle:DotenvBundle" = { all = true }
 
-# No [files]: configuring is optional. With none the base file is
-# %kernel.project_dir%/.env and the environment is read from APP_ENV; an
-# application changing either writes config/packages/dotenv.py itself.
+[files]
+# Destination under the application package = template under this recipe.
+# The one description of the cascade: the entry point boots the environment
+# from the DOTENV it holds before the kernel builds, and dotenv:dump and
+# debug:dotenv read the same object from the container — the cascade is
+# described there, and nowhere else.
+"config/packages/dotenv.py" = "files/config/dotenv.py.tmpl"
 
 [env]
 # The defaults every machine shares go in .env, and .env is committed. The
@@ -23,7 +27,7 @@ lines = ["/.env.local", "/.env.*.local", "/.env.local.json"]
 
 [notes]
 steps = [
-  "Call Dotenv().boot_env(...) at the top of every entry point, before the kernel is built: the bundle loads no file itself.",
+  "Call DOTENV.boot(PROJECT_DIR) at the top of every entry point, before the kernel is built: DOTENV comes from config/packages/dotenv.py.",
 ]
 check = [
   "<script> debug:dotenv — the environment, production and debug flags, and each file of the cascade, loaded or missing (values masked unless --show-values)",

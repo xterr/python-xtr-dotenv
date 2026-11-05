@@ -6,6 +6,8 @@ without any file ever writing into the process environment. Only the
 names the cascade actually loaded from files are returned; the real
 environment is not shadowed here, because pydantic-settings' own
 :class:`EnvSettingsSource` already covers it at a higher priority.
+A base file that cannot be read raises: a missing cascade is a
+misconfiguration to surface, not an empty model.
 """
 
 from __future__ import annotations
@@ -17,7 +19,6 @@ from pydantic_settings import EnvSettingsSource
 from typing_extensions import override
 
 from xtr_dotenv.dotenv import PATH_VAR, TRACKING_VAR, Dotenv
-from xtr_dotenv.exception import PathError
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -69,17 +70,20 @@ class DotenvSettingsSource(EnvSettingsSource):
 
     @override
     def _load_env_vars(self) -> Mapping[str, str | None]:
-        """Run the cascade on a copy of ``os.environ`` and return only file-loaded names."""
+        """Run the cascade on a copy of ``os.environ`` and return only file-loaded names.
+
+        Raises:
+            PathError: When neither the base file nor its ``.dist`` can be
+                read — the model's cascade is missing, which is an error
+                and not silence.
+        """
         sandbox: dict[str, str] = dict(os.environ)
         loader = Dotenv(env_key=self._env_key, environ=sandbox)
-        try:
-            _ = loader.load_env(
-                self._path,
-                default_env=self._default_env,
-                test_envs=self._test_envs,
-            )
-        except PathError:
-            return {}
+        _ = loader.load_env(
+            self._path,
+            default_env=self._default_env,
+            test_envs=self._test_envs,
+        )
         # Anything not tracked came from the real environ (or is our own
         # bookkeeping) and belongs to the env source, not to this one.
         tracked_raw = sandbox.get(TRACKING_VAR, "")

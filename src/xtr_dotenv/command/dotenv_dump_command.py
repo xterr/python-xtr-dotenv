@@ -17,7 +17,7 @@ from xtr_dependency_injection import (  # noqa: TC002 — engine reads annotatio
 from xtr_dotenv.bundle.dotenv_config import (  # noqa: TC001 — engine reads annotations at runtime.
     DotenvConfig,
 )
-from xtr_dotenv.dotenv import PATH_VAR, TRACKING_VAR, Dotenv
+from xtr_dotenv.dotenv import DUMP_DEFAULT_ENV_VAR, DUMP_TEST_ENVS_VAR, PATH_VAR, TRACKING_VAR
 from xtr_dotenv.exception import DotenvError, PathError
 
 __all__ = ["DotenvDumpCommand"]
@@ -35,7 +35,9 @@ class DotenvDumpCommand:
     computed on a fresh environ carrying only the env key, so no real
     environment variable lands in it — but it carries whatever the cascade's
     files carry, the ``.local`` overlays included, so gitignore it as those
-    files are.
+    files are. It also stamps the ``default_env`` and ``test_envs`` it was
+    compiled with, so ``boot_env`` can refuse a dump compiled from a
+    different description of the cascade instead of silently loading it.
     """
 
     async def __call__(
@@ -49,7 +51,7 @@ class DotenvDumpCommand:
         target_env = env if env is not None else kernel.environment
         base_path = config.base_path(kernel.project_dir)
         sandbox: dict[str, str] = {config.env_key: target_env}
-        loader = Dotenv(env_key=config.env_key, environ=sandbox)
+        loader = config.loader(environ=sandbox)
         try:
             _ = loader.load_env(
                 str(base_path),
@@ -59,7 +61,11 @@ class DotenvDumpCommand:
         except DotenvError as error:
             io.error(f"cannot compile cascade: {error}")
             return ExitCode.FAILURE
-        payload = _extract(sandbox)
+        payload = {
+            **_extract(sandbox),
+            DUMP_DEFAULT_ENV_VAR: config.default_env,
+            DUMP_TEST_ENVS_VAR: ",".join(config.test_envs),
+        }
         dump_path = Path(f"{base_path}.local.json")
         content = json.dumps(payload, indent=2, sort_keys=True)
         await anyio.to_thread.run_sync(_write, dump_path, content)

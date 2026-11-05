@@ -166,6 +166,18 @@ async def test_debug_reports_debug_flag_and_production_for_dev(
     assert "debug (APP_DEBUG)" in output
 
 
+async def test_debug_reports_the_default_environment(tmp_path: Path) -> None:
+    _ = (tmp_path / ".env").write_text("APP_ENV=dev\n", encoding="utf-8")
+    style, buffer = _capture()
+
+    result = await DebugDotenvCommand()(
+        style, _kernel(tmp_path), DotenvConfig(path=".env", default_env="dev")
+    )
+
+    assert result == ExitCode.SUCCESS
+    assert "default environment" in buffer.getvalue()
+
+
 async def test_debug_reports_production_and_debug_off_for_prod_env(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

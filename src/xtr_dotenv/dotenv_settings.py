@@ -33,7 +33,12 @@ class DotenvSettings(BaseSettings):
 
     Override the ``_dotenv_*`` class variables to point the cascade at a
     different file, a different environment key, or to add extra test-like
-    environments where the ``.local`` overlay must not run.
+    environments where the ``.local`` overlay must not run. A relative
+    ``_dotenv_path`` is taken from the process's working directory — an
+    application that means the project's ``.env`` sets
+    ``_dotenv_path = str(PROJECT_DIR / ".env")``. A missing base file is an
+    error, not an empty model: the cascade the model promises is the one it
+    reads.
     """
 
     _dotenv_path: ClassVar[str] = ".env"

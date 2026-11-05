@@ -14,6 +14,7 @@ from xtr_dependency_injection import KernelInterface, KernelReport
 from xtr_dotenv import PathError
 from xtr_dotenv.bundle import DotenvConfig
 from xtr_dotenv.command.dotenv_dump_command import DotenvDumpCommand
+from xtr_dotenv.dotenv import DUMP_DEFAULT_ENV_VAR, DUMP_TEST_ENVS_VAR
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -99,6 +100,20 @@ async def test_dump_omits_bookkeeping_variables(tmp_path: Path) -> None:
     dump = _load_dump(tmp_path / ".env.local.json")
     assert "XTR_DOTENV_VARS" not in dump
     assert "XTR_DOTENV_PATH" not in dump
+
+
+async def test_dump_stamps_the_description_it_was_compiled_from(tmp_path: Path) -> None:
+    base = tmp_path / ".env"
+    _ = base.write_text("APP_ENV=dev\nA=1\n", encoding="utf-8")
+    kernel = _kernel(tmp_path)
+
+    _ = await DotenvDumpCommand()(
+        _style(), kernel, DotenvConfig(path=".env", default_env="dev", test_envs=("test",))
+    )
+
+    dump = _load_dump(tmp_path / ".env.local.json")
+    assert dump[DUMP_DEFAULT_ENV_VAR] == "dev"
+    assert dump[DUMP_TEST_ENVS_VAR] == "test"
 
 
 async def test_dump_reports_failure_on_bad_file(tmp_path: Path) -> None:

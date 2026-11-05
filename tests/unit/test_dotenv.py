@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import os
 import re
+import warnings
 from typing import TYPE_CHECKING
 
 import pytest
@@ -14,6 +17,7 @@ from xtr_dotenv import (
     PathError,
     VariableCircularReferenceError,
 )
+from xtr_dotenv.dotenv import DUMP_DEFAULT_ENV_VAR, DUMP_TEST_ENVS_VAR
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -332,6 +336,94 @@ def test_boot_env_reads_the_dump_when_the_environment_key_is_empty(tmp_path: Pat
     assert (environ["APP_ENV"], environ["X"]) == ("prod", "fromdump")
 
 
+def test_a_dump_that_names_no_environment_resolves_debug_through_default_env(
+    tmp_path: Path,
+) -> None:
+    # The fast path never applied default_env: an unset environment read as
+    # None, and None is "not prod", so debug came on where the cascade would
+    # have settled on the default and left it off.
+    _ = _write(tmp_path, ".env", "APP_ENV=dev\nX=fromfile\n")
+    _ = _write(tmp_path, ".env.local.json", '{"X": "fromdump"}')
+    environ: dict[str, str] = {}
+
+    _ = Dotenv(environ=environ).boot_env(str(tmp_path / ".env"), default_env="prod")
+
+    assert (environ["X"], environ["APP_DEBUG"]) == ("fromdump", "0")
+
+
+def test_a_dump_stamped_with_the_same_description_applies(tmp_path: Path) -> None:
+    _ = _write(tmp_path, ".env", "APP_ENV=dev\nX=fromfile\n")
+    _ = _write(
+        tmp_path,
+        ".env.local.json",
+        json.dumps(
+            {
+                "APP_ENV": "dev",
+                "X": "fromdump",
+                DUMP_DEFAULT_ENV_VAR: "dev",
+                DUMP_TEST_ENVS_VAR: "test",
+            }
+        ),
+    )
+    environ: dict[str, str] = {}
+
+    _ = Dotenv(environ=environ).boot_env(
+        str(tmp_path / ".env"), default_env="dev", test_envs=("test",)
+    )
+
+    assert environ["X"] == "fromdump"
+    assert DUMP_DEFAULT_ENV_VAR not in environ
+    assert DUMP_TEST_ENVS_VAR not in environ
+
+
+def test_a_dump_stamped_with_a_different_default_env_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _ = _write(tmp_path, ".env", "APP_ENV=dev\nX=fromfile\n")
+    _ = _write(
+        tmp_path,
+        ".env.local.json",
+        json.dumps({"APP_ENV": "dev", "X": "fromdump", DUMP_DEFAULT_ENV_VAR: "staging"}),
+    )
+    sandbox: dict[str, str] = {}
+    monkeypatch.setattr(os, "environ", sandbox)
+
+    with pytest.warns(RuntimeWarning, match="dotenv:dump"):
+        _ = Dotenv(environ=sandbox).boot_env(str(tmp_path / ".env"), default_env="dev")
+
+    assert sandbox["X"] == "fromfile"
+
+
+def test_a_dump_stamped_with_different_test_envs_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _ = _write(tmp_path, ".env", "APP_ENV=dev\nX=fromfile\n")
+    _ = _write(
+        tmp_path,
+        ".env.local.json",
+        json.dumps({"APP_ENV": "dev", "X": "fromdump", DUMP_TEST_ENVS_VAR: "test,ci"}),
+    )
+    sandbox: dict[str, str] = {}
+    monkeypatch.setattr(os, "environ", sandbox)
+
+    with pytest.warns(RuntimeWarning, match="dotenv:dump"):
+        _ = Dotenv(environ=sandbox).boot_env(str(tmp_path / ".env"), test_envs=("test",))
+
+    assert sandbox["X"] == "fromfile"
+
+
+def test_a_dump_without_stamps_applies_as_it_always_did(tmp_path: Path) -> None:
+    _ = _write(tmp_path, ".env", "APP_ENV=dev\nX=fromfile\n")
+    _ = _write(tmp_path, ".env.local.json", '{"APP_ENV": "dev", "X": "fromdump"}')
+    environ: dict[str, str] = {}
+
+    _ = Dotenv(environ=environ).boot_env(
+        str(tmp_path / ".env"), default_env="dev", test_envs=("test",)
+    )
+
+    assert environ["X"] == "fromdump"
+
+
 def test_boot_env_normalises_debug_true_for_dev(tmp_path: Path) -> None:
     _ = _write(tmp_path, ".env", "APP_ENV=dev\n")
     environ: dict[str, str] = {}
@@ -357,6 +449,43 @@ def test_boot_env_normalises_debug_false_for_prod(tmp_path: Path) -> None:
     assert environ["APP_DEBUG"] == "0"
 
 
+@pytest.mark.parametrize("env", ["dev", "local", "test"])
+def test_boot_env_leaves_debug_on_for_the_debug_envs_by_default(tmp_path: Path, env: str) -> None:
+    _ = _write(tmp_path, ".env", f"APP_ENV={env}\n")
+    environ: dict[str, str] = {}
+
+    _ = Dotenv(environ=environ).boot_env(str(tmp_path / ".env"))
+
+    assert environ["APP_DEBUG"] == "1"
+
+
+@pytest.mark.parametrize("env", ["prod", "staging", "production"])
+def test_boot_env_leaves_debug_off_for_every_other_environment_by_default(
+    tmp_path: Path, env: str
+) -> None:
+    _ = _write(tmp_path, ".env", f"APP_ENV={env}\n")
+    environ: dict[str, str] = {}
+
+    _ = Dotenv(environ=environ).boot_env(str(tmp_path / ".env"))
+
+    assert environ["APP_DEBUG"] == "0"
+
+
+@pytest.mark.parametrize(
+    ("env", "raw", "expected"),
+    [("dev", "0", "0"), ("prod", "1", "1"), ("dev", "true", "1"), ("prod", "off", "0")],
+)
+def test_an_explicit_debug_key_wins_in_every_environment(
+    tmp_path: Path, env: str, raw: str, expected: str
+) -> None:
+    _ = _write(tmp_path, ".env", f"APP_ENV={env}\n")
+    environ = {"APP_DEBUG": raw}
+
+    _ = Dotenv(environ=environ).boot_env(str(tmp_path / ".env"))
+
+    assert environ["APP_DEBUG"] == expected
+
+
 def test_boot_env_respects_existing_debug_value(tmp_path: Path) -> None:
     _ = _write(tmp_path, ".env", "APP_ENV=prod\nAPP_DEBUG=yes\n")
     environ: dict[str, str] = {}
@@ -364,18 +493,64 @@ def test_boot_env_respects_existing_debug_value(tmp_path: Path) -> None:
     assert environ["APP_DEBUG"] == "1"
 
 
-def test_set_prod_envs_shifts_debug_default(tmp_path: Path) -> None:
-    _ = _write(tmp_path, ".env", "APP_ENV=staging\n")
-    environ: dict[str, str] = {}
-    _ = Dotenv(environ=environ).set_prod_envs(("staging", "prod")).boot_env(str(tmp_path / ".env"))
-    assert environ["APP_DEBUG"] == "0"
-
-
-def test_prod_envs_given_to_the_constructor_shift_the_debug_default(tmp_path: Path) -> None:
-    _ = _write(tmp_path, ".env", "APP_ENV=staging\n")
+def test_set_prod_envs_no_longer_gates_the_debug_default(tmp_path: Path) -> None:
+    # prod_envs declares production for the undeclared-environment warning and
+    # the debug:dotenv report; debug_envs alone decides the default, so a
+    # "dev" declared production still boots with debug on.
+    _ = _write(tmp_path, ".env", "APP_ENV=dev\n")
     environ: dict[str, str] = {}
 
-    _ = Dotenv(environ=environ, prod_envs=("staging",)).boot_env(str(tmp_path / ".env"))
+    _ = Dotenv(environ=environ).set_prod_envs(("dev",)).boot_env(str(tmp_path / ".env"))
+
+    assert environ["APP_DEBUG"] == "1"
+
+
+def test_prod_envs_given_to_the_constructor_do_not_gate_the_debug_default(tmp_path: Path) -> None:
+    _ = _write(tmp_path, ".env", "APP_ENV=dev\n")
+    environ: dict[str, str] = {}
+
+    _ = Dotenv(environ=environ, prod_envs=("dev",)).boot_env(str(tmp_path / ".env"))
+
+    assert environ["APP_DEBUG"] == "1"
+
+
+def test_an_undeclared_environment_warns_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _ = _write(tmp_path, ".env", "APP_ENV=staging\n")
+    sandbox: dict[str, str] = {}
+    # The warning is for the real environment alone: make the sandbox BE
+    # os.environ for the duration, so the process's own variables are untouched.
+    monkeypatch.setattr(os, "environ", sandbox)
+
+    with pytest.warns(RuntimeWarning, match="staging"):
+        _ = Dotenv(environ=sandbox).boot_env(str(tmp_path / ".env"))
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        _ = Dotenv(environ=sandbox).boot_env(str(tmp_path / ".env"))
+
+
+@pytest.mark.parametrize("env", ["prod", "dev", "test"])
+def test_a_declared_environment_never_warns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, env: str
+) -> None:
+    _ = _write(tmp_path, ".env", f"APP_ENV={env}\n")
+    sandbox: dict[str, str] = {}
+    monkeypatch.setattr(os, "environ", sandbox)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        _ = Dotenv(environ=sandbox).boot_env(str(tmp_path / ".env"))
+
+
+def test_the_undeclared_environment_warning_is_suppressed_on_a_sandbox(tmp_path: Path) -> None:
+    _ = _write(tmp_path, ".env", "APP_ENV=staging\n")
+    environ: dict[str, str] = {}
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        _ = Dotenv(environ=environ).boot_env(str(tmp_path / ".env"))
 
     assert environ["APP_DEBUG"] == "0"
 

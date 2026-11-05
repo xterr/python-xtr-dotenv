@@ -52,14 +52,14 @@ class DebugDotenvCommand:
         # variable does, exactly as they did when the process loaded them.
         try:
             env, files = Dotenv(env_key=config.env_key, environ=dict(os.environ)).cascade(
-                str(base_path), default_env=kernel.environment, test_envs=config.test_envs
+                str(base_path), default_env=config.default_env, test_envs=config.test_envs
             )
         except DotenvError as error:
             io.error(str(error))
             return ExitCode.FAILURE
         cascade_paths = [Path(file) for file in files]
         io.section(f"Cascade for env={env!r} at {base_path}")
-        self._report_environment(io, config, base_path, env, kernel.environment)
+        self._report_environment(io, config, base_path, env)
         io.table(
             ("File", "Status"),
             tuple(
@@ -108,22 +108,19 @@ class DebugDotenvCommand:
         config: DotenvConfig,
         base_path: Path,
         env: str,
-        default_env: str,
     ) -> None:
         """Print the environment, whether it is production, and the debug flag.
 
         The debug flag is read exactly as :meth:`Dotenv.boot_env` sets it —
-        on a sandbox copy of this process's environment — so ``debug_key`` and
-        ``prod_envs`` drive the same decision the application would make.
+        on a sandbox copy of this process's environment, through the loader
+        the config itself builds — so ``debug_envs`` and ``prod_envs`` drive
+        the same decision the application would make.
         """
         sandbox = dict(os.environ)
         try:
-            _ = Dotenv(
-                env_key=config.env_key,
-                debug_key=config.debug_key,
-                environ=sandbox,
-                prod_envs=config.prod_envs,
-            ).boot_env(str(base_path), default_env=default_env, test_envs=config.test_envs)
+            _ = config.loader(environ=sandbox).boot_env(
+                str(base_path), default_env=config.default_env, test_envs=config.test_envs
+            )
         except DotenvError:
             # The cascade table above already surfaced the real failure; the
             # debug flag is simply unknown when the files cannot be read.
@@ -133,6 +130,7 @@ class DebugDotenvCommand:
             ("Setting", "Value"),
             (
                 ("environment", env),
+                ("default environment", config.default_env),
                 ("production", production),
                 (f"debug ({config.debug_key})", sandbox.get(config.debug_key, "0")),
             ),

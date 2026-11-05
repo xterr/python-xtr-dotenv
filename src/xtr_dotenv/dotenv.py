@@ -17,6 +17,14 @@ value too.
 Expansion is resolved once every file of a call is read, so a value in
 ``.env`` may reference one only ``.env.local`` defines; only the environment
 key is resolved early, since it decides which files come next.
+
+:meth:`Dotenv.boot_env` also settles the debug key, and that default fails
+closed: debug is on by default only in the environments ``debug_envs``
+declares, and an environment declared nowhere gets debug off plus a
+one-time warning — a production host whose environment is spelled
+``"production"`` or ``"staging"`` must not wake up with debug on. A dump
+carries the description of the cascade it was compiled from, so one built
+against a different description is refused rather than silently loaded.
 """
 
 from __future__ import annotations
@@ -24,6 +32,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import warnings
 from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Self, cast, final
@@ -38,13 +47,31 @@ if TYPE_CHECKING:
     Lookup = Callable[[str], "str | None"]
     Assign = Callable[[str, str], None]
 
-__all__ = ["PATH_VAR", "TRACKING_VAR", "Dotenv"]
+__all__ = ["DUMP_DEFAULT_ENV_VAR", "DUMP_TEST_ENVS_VAR", "PATH_VAR", "TRACKING_VAR", "Dotenv"]
 
 TRACKING_VAR: Final = "XTR_DOTENV_VARS"
 """Lists, comma-separated, every variable a file set — a later file may replace those."""
 
 PATH_VAR: Final = "XTR_DOTENV_PATH"
 """The base path the last cascade loaded, for tooling."""
+
+DUMP_DEFAULT_ENV_VAR: Final = "XTR_DOTENV_DUMP_DEFAULT_ENV"
+"""The ``default_env`` a dump was compiled with, so a stale one can be refused."""
+
+DUMP_TEST_ENVS_VAR: Final = "XTR_DOTENV_DUMP_TEST_ENVS"
+"""The comma-joined ``test_envs`` a dump was compiled with, for the same reason."""
+
+_WARNED_ENVS: Final[set[str]] = set()
+"""Environments the undeclared-environment warning has already named.
+
+Module-level on purpose: an environ-level guard — a bookkeeping variable
+written into the target mapping — would leak into every dump
+``dotenv:dump`` writes and every value ``DotenvSettingsSource`` returns,
+and a warning's memory is not configuration.
+"""
+
+_WARNED_DUMPS: Final[set[str]] = set()
+"""Dump paths the stale-description warning has already named; module-level for the same reason."""
 
 _BRACED: Final = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?:(:[-=])((?:[^}\\]|\\.)*))?\}")
 _UNBRACED: Final = re.compile(r"\$([A-Za-z_][A-Za-z0-9_]*)")
@@ -75,7 +102,7 @@ class Dotenv:
     running in the same process can see anything it did.
     """
 
-    __slots__ = ("_debug_key", "_env_key", "_environ", "_prod_envs")
+    __slots__ = ("_debug_envs", "_debug_key", "_env_key", "_environ", "_prod_envs")
 
     def __init__(
         self,
@@ -84,16 +111,25 @@ class Dotenv:
         *,
         environ: MutableMapping[str, str] | None = None,
         prod_envs: Iterable[str] = ("prod",),
+        debug_envs: Iterable[str] = ("dev", "local", "test"),
     ) -> None:
         """Build a loader that reads and writes ``environ`` (default: ``os.environ``).
 
-        ``prod_envs`` are the environments where :meth:`boot_env` leaves debug
-        off unless the debug key turns it on; it is on by default elsewhere.
+        ``debug_envs`` are the environments where :meth:`boot_env` leaves
+        debug on unless the debug key turns it off; everywhere else — an
+        environment declared nowhere included — debug stays off unless the
+        key turns it on. The default fails closed: a host whose environment
+        is spelled ``"production"`` or ``"staging"`` must not wake up with
+        debug on. ``prod_envs`` declares which environments are production;
+        the debug default no longer reads it — the declaration feeds
+        :meth:`boot_env`'s undeclared-environment warning and the
+        ``debug:dotenv`` report.
         """
         self._env_key = env_key
         self._debug_key = debug_key
         self._environ: MutableMapping[str, str] = environ if environ is not None else os.environ
         self._prod_envs: tuple[str, ...] = tuple(prod_envs)
+        self._debug_envs: tuple[str, ...] = tuple(debug_envs)
 
     @property
     def env_key(self) -> str:
@@ -106,9 +142,12 @@ class Dotenv:
         return self._debug_key
 
     def set_prod_envs(self, envs: Iterable[str]) -> Self:
-        """Replace the environments where :meth:`boot_env` leaves debug off by default.
+        """Replace the declared production environments.
 
-        The same as passing ``prod_envs`` to the constructor.
+        The same as passing ``prod_envs`` to the constructor. The
+        declaration does not gate the debug default — ``debug_envs`` does;
+        it names the environments :meth:`boot_env`'s undeclared-environment
+        warning and the ``debug:dotenv`` report treat as production.
         """
         self._prod_envs = tuple(envs)
         return self
@@ -280,10 +319,19 @@ class Dotenv:
 
         ``path.local.json`` — a JSON object of strings the dump writes — is
         used when overriding, when it names no environment, or when the one
-        it names is the current one; otherwise the cascade of
-        :meth:`load_env` runs. The debug key then becomes ``"1"`` or ``"0"``:
-        its value read as a flag (``1/true/yes/on`` or a non-zero number),
-        or, unset, whether the environment is not a production one.
+        it names is the current one, and when it was compiled from the same
+        cascade description: the dump stamps the ``default_env`` and
+        ``test_envs`` it was built with, and one stamped differently is
+        refused — with a one-time warning — so the cascade runs instead
+        rather than silently loading values another description compiled.
+        A dump without stamps predates them and applies as it always did.
+
+        The debug key then becomes ``"1"`` or ``"0"``: its value read as a
+        flag (``1/true/yes/on`` or a non-zero number) when it is set, else
+        whether the environment — the one the load settled on,
+        ``default_env`` when none did — is one of ``debug_envs``. That
+        default fails closed, and an environment declared nowhere gets a
+        one-time warning naming it and the remedies.
 
         Raises:
             PathError: If the cascade runs and its base file cannot be read.
@@ -292,23 +340,95 @@ class Dotenv:
                 a loop.
         """
         dumped = _read_dump(f"{path}.local.json")
-        if dumped is not None and self._dump_applies(dumped, override_existing_vars):
-            self._environ[PATH_VAR] = path
-            _ = self.populate(dumped, override_existing_vars)
-        else:
+        if (
+            dumped is None
+            or not self._dump_applies(dumped, override_existing_vars)
+            or not self._dump_describes(dumped, default_env, test_envs, f"{path}.local.json")
+        ):
+            # No dump, one naming another environment, or one compiled from a
+            # different description of the cascade: the cascade runs instead.
+            dumped = None
+        if dumped is None:
             _ = self.load_env(
                 path,
                 default_env=default_env,
                 test_envs=test_envs,
                 override_existing_vars=override_existing_vars,
             )
+        else:
+            self._environ[PATH_VAR] = path
+            _ = self.populate(dumped, override_existing_vars)
+        # An unset or empty environment key names no environment (see
+        # _is_set), so the default stands in for it — the dump fast path
+        # included, which never wrote the key back.
+        resolved = self._environ.get(self._env_key) or default_env
         debug = self._environ.get(self._debug_key)
         if not debug:
-            enabled = self._environ.get(self._env_key) not in self._prod_envs
+            enabled = resolved in self._debug_envs
+            message = self._undeclared_env_warning(resolved, default_env, test_envs)
+            if message is not None:
+                warnings.warn(message, RuntimeWarning, stacklevel=2)
         else:
             enabled = _flag(debug)
         self._environ[self._debug_key] = "1" if enabled else "0"
         return self
+
+    def _undeclared_env_warning(
+        self,
+        resolved: str,
+        default_env: str,
+        test_envs: tuple[str, ...],
+    ) -> str | None:
+        """Return the warning for an environment declared nowhere, or ``None``.
+
+        An environment that is neither the default nor in ``debug_envs``,
+        ``test_envs`` or ``prod_envs`` gets debug off — the default fails
+        closed — and one warning per environment per process says why and
+        what to do: an undeclared environment is more often a production
+        host spelled differently than a developer laptop, and the warning
+        makes it loud instead of silent. Suppressed on a sandboxed environ,
+        so ``dotenv:dump`` and ``debug:dotenv`` — which boot on copies —
+        stay quiet.
+        """
+        declared = {default_env, *self._debug_envs, *test_envs, *self._prod_envs}
+        if resolved in declared or self._environ is not os.environ or resolved in _WARNED_ENVS:
+            return None
+        _WARNED_ENVS.add(resolved)
+        return (
+            f"environment {resolved!r} is declared nowhere in the dotenv cascade "
+            f"(not the default, nor in debug_envs, test_envs or prod_envs), so "
+            f'{self._debug_key} defaults to "0"; set {self._debug_key} explicitly, '
+            f"or declare the environment in debug_envs, test_envs or prod_envs"
+        )
+
+    def _dump_describes(
+        self,
+        dumped: dict[str, str],
+        default_env: str,
+        test_envs: tuple[str, ...],
+        dump_path: str,
+    ) -> bool:
+        """Return whether the dump was compiled from this cascade description.
+
+        The stamps are popped either way: they are bookkeeping, never
+        values a process reads. A dump without stamps predates them and
+        describes nothing, so it applies as it always did.
+        """
+        stamped_default = dumped.pop(DUMP_DEFAULT_ENV_VAR, None)
+        stamped_tests = dumped.pop(DUMP_TEST_ENVS_VAR, None)
+        if (stamped_default is not None and stamped_default != default_env) or (
+            stamped_tests is not None and tuple(stamped_tests.split(",")) != test_envs
+        ):
+            if self._environ is os.environ and dump_path not in _WARNED_DUMPS:
+                _WARNED_DUMPS.add(dump_path)
+                warnings.warn(
+                    f"the dump at {dump_path} was compiled from a different cascade "
+                    f"description; rerun dotenv:dump to refresh it",
+                    RuntimeWarning,
+                    stacklevel=3,
+                )
+            return False
+        return True
 
     def _load(self, paths: tuple[str, ...], *, override: bool) -> Self:
         merged: dict[str, Raw] = {}

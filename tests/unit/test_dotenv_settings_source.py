@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 import pytest
 
-from xtr_dotenv import DotenvSettings
+from xtr_dotenv import DotenvSettings, PathError
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -66,7 +66,8 @@ def test_init_kwargs_win_over_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert settings.database_url == "postgres://init"
 
 
-def test_missing_cascade_falls_back_to_defaults(tmp_path: Path) -> None:
-    settings = _bind(tmp_path / "nope")()
-    assert settings.database_url == "sqlite:///:memory:"
-    assert settings.log_level == "INFO"
+def test_a_missing_base_file_is_an_error_not_an_empty_model(tmp_path: Path) -> None:
+    # The cascade the model promises is the one it reads; a missing base file
+    # used to pass silently as an empty model.
+    with pytest.raises(PathError):
+        _ = _bind(tmp_path / "nope")()

@@ -28,8 +28,9 @@ source that feeds a typed model from the same cascade — without ever touching
   sandboxed copy of `os.environ`, so a model gets the values without side effects.
 - 🌐 **Variable expansion** — `$VAR`, `${VAR}`, `${VAR:-default}`, `${VAR:=default}`, `\$` as
   a literal. Single-quoted values are literal too. `$(command)` is kept as text, never run.
-- ⚡ **A dumped fast path** — `dotenv:dump` writes the compiled cascade to `.env.local.json`;
-  `boot_env` reads that one file instead of the cascade.
+- ⚡ **A dumped fast path** — `dotenv:dump` writes the compiled cascade to `.env.local.json`,
+  stamped with the description it was compiled from; `boot_env` reads that one file instead of
+  the cascade, and refuses a dump whose stamp no longer matches.
 
 ## Install
 
@@ -64,8 +65,10 @@ raise SystemExit(kernel.run(...))
 ```
 
 `boot_env` also sets `APP_DEBUG` to `"1"` or `"0"`: its own value read as a flag when it is set,
-otherwise on in every environment but those in `prod_envs` — `Dotenv(prod_envs=("prod",
-"staging"))`, `("prod",)` by default.
+otherwise on only in the environments `debug_envs` declares — `("dev", "local", "test")` by
+default. That default fails closed: an environment declared nowhere (not the default, not in
+`debug_envs`, `test_envs` or `prod_envs`) gets debug **off** plus a one-time `RuntimeWarning`
+naming it and the remedies — set `APP_DEBUG` explicitly, or declare the environment.
 
 The loader is stateless: hand it a `MutableMapping[str, str]` as `environ=` and no other
 code sees a thing.
@@ -146,7 +149,10 @@ class AppSettings(DotenvSettings):
 
 Source priority is: init keyword arguments > real environment variables > the dotenv
 cascade > secret files > field defaults. **No file the source reads writes into
-`os.environ`.**
+`os.environ`.** A relative `_dotenv_path` is taken from the process's working directory —
+an application that means the project's `.env` sets `_dotenv_path = str(PROJECT_DIR / ".env")`.
+A missing base file raises `PathError`: the cascade the model promises is the one it reads,
+not an empty model.
 
 ## Errors
 
@@ -157,7 +163,7 @@ attributes.
 | --- | --- |
 | `FormatError` | A line cannot be parsed (bad binding, key without `=`); carries `.path`, `.line`, `.reason` |
 | `InvalidArgumentError` | A `DotenvConfig` field is empty; carries `.reason` |
-| `PathError` | A file cannot be read, or the dump cannot be written; carries `.path` |
+| `PathError` | A file cannot be read — the cascade's base file included, raised by `DotenvSettings` — or the dump cannot be written; carries `.path` |
 | `VariableCircularReferenceError` | Variables reference each other and never resolve; carries `.names` |
 
 `FormatError`, `InvalidArgumentError` and `VariableCircularReferenceError` are also `ValueError`s; `PathError` is
@@ -171,25 +177,64 @@ Everything adding this package to an application on
 - **Install** — `uv add xtr-dotenv xtr-dependency-injection`: the bundle needs the container
   installed beside it, never as an extra. Install xtr-console beside it for the `dotenv:dump`
   and `debug:dotenv` commands.
-- **Recipe** — `uv run xtr-recipes recipes:sync` does the *Activate*, *Environment* and *Ignore*
-  steps below: it lists `DotenvBundle`, writes `APP_ENV=dev` in `.env`, and ignores the per-machine
-  `.env.local`, `.env.*.local` and `.env.local.json`. It prints the *Load* step, which a recipe
-  cannot make for you.
-- **Load** — the bundle does not load `.env` files. Call `Dotenv().boot_env(...)` at the top
-  of every entry point, before the kernel is built — see [Quick start](#quick-start).
+- **Recipe** — `uv run xtr-recipes recipes:sync` does the *Activate*, *Configure*, *Environment*
+  and *Ignore* steps below: it lists `DotenvBundle`, writes `config/packages/dotenv.py`, writes
+  `APP_ENV=dev` in `.env`, and ignores the per-machine `.env.local`, `.env.*.local` and
+  `.env.local.json`. It prints the *Load* step, which a recipe cannot make for you.
+- **Load** — the bundle does not load `.env` files. `config/packages/dotenv.py` holds the one
+  description of the cascade; call `DOTENV.boot(PROJECT_DIR)` at the top of every entry point,
+  before the kernel is built:
+
+  ```python
+  # <app>/config/packages/dotenv.py — the recipe writes this
+  from typing import Final
+
+  from xtr_dependency_injection import configure
+  from xtr_dotenv.bundle import DotenvConfig
+
+  DOTENV: Final = DotenvConfig(
+      path="%kernel.project_dir%/.env",
+      env_key="APP_ENV",
+      debug_key="APP_DEBUG",
+      default_env="dev",
+      test_envs=("test",),
+      prod_envs=("prod",),
+      debug_envs=("dev", "local", "test"),
+  )
+
+
+  @configure
+  def dotenv() -> DotenvConfig:
+      """Hand the container the one cascade description."""
+      return DOTENV
+  ```
+
+  ```python
+  # <app>/__main__.py — the first line of every entry point
+  from app.config.packages.dotenv import DOTENV
+
+  DOTENV.boot(PROJECT_DIR)  # only now import the kernel, settings, everything else
+  ```
+
+  `boot` resolves `%kernel.project_dir%` against the project directory itself — no container
+  exists yet — and `dotenv:dump` and `debug:dotenv` read the same `DOTENV` from the container.
+  Change the cascade in `config/packages/dotenv.py`, and nowhere else.
 - **Activate** — `DotenvBundle: {"all": True}` in `BUNDLES` in `<app>/config/bundles.py`, imported
   from `xtr_dotenv.bundle`. It only adds `dotenv:dump` and `debug:dotenv`, and only when the
   console bundle is active.
 - **Brings along** — nothing.
-- **Configure** — optional: with no configuration the base file is
-  `%kernel.project_dir%/.env` and the environment is read from `APP_ENV`.
-  `<app>/config/packages/dotenv.py`, a `@configure` function returning `DotenvConfig`, changes them —
-  see [Kernel / bundle](#kernel--bundle).
+- **Configure** — `config/packages/dotenv.py`, written by the recipe (see *Load*).
+  `debug_envs` are the environments where `boot` leaves `APP_DEBUG` on by default; everywhere
+  else it stays off, and an explicit `APP_DEBUG` always wins. An environment declared nowhere
+  (not `default_env`, not in `debug_envs`, `test_envs` or `prod_envs`) gets debug off plus a
+  one-time `RuntimeWarning` naming it and the remedies. `dotenv:dump` stamps the description
+  it was compiled from into the dump, and `boot` refuses — with a one-time warning — a dump
+  whose stamp no longer matches, so a stale dump never silently loads.
 - **Environment** — create `.env` with the defaults every machine shares, for example
   `APP_ENV=dev`, and commit it.
 - **Ignore** — `.env.local`, `.env.*.local` and `.env.local.json`: per-machine overrides, and
   what `dotenv:dump` writes.
-- **Remove** — drop the `BUNDLES` entry and every `boot_env(...)` call, delete
+- **Remove** — drop the `BUNDLES` entry and every `DOTENV.boot(...)` call, delete
   `<app>/config/packages/dotenv.py`, then `uv remove xtr-dotenv`. The `.env` files stay yours.
 - **Check** — `debug:dotenv` reports the environment, production and debug flags, and lists each
   file of the cascade as loaded or missing (values masked unless `--show-values`).
@@ -199,8 +244,9 @@ Everything adding this package to an application on
 With [xtr-dependency-injection](../xtr-dependency-injection) installed beside the package — it is
 not a dependency, and nothing outside `xtr_dotenv.bundle` and the commands it loads needs it — an
 application lists `DotenvBundle` in its `app/config/bundles.py`. **The bundle does not load `.env`
-files** — `Dotenv().boot_env(...)` runs before the kernel is built. What the bundle contributes
-is the two commands that need the kernel to know its project directory:
+files** — `DOTENV.boot(PROJECT_DIR)` runs before the kernel is built, on the one description
+`config/packages/dotenv.py` holds (see [Use in an application](#use-in-an-application)). What the
+bundle contributes is the two commands that need the kernel to know its project directory:
 
 ```sh
 uv add xtr-dotenv xtr-dependency-injection xtr-console
@@ -213,31 +259,22 @@ from xtr_dotenv.bundle import DotenvBundle
 BUNDLES = {DotenvBundle: {"all": True}}
 ```
 
-```python
-# app/config/packages/dotenv.py
-from xtr_dependency_injection import configure
-from xtr_dotenv.bundle import DotenvConfig
-
-
-@configure
-def dotenv() -> DotenvConfig:
-    return DotenvConfig(path="%kernel.project_dir%/.env", env_key="APP_ENV")
-```
-
 | `DotenvConfig` field | Meaning |
 | --- | --- |
-| `path` | The base `.env` path; default `%kernel.project_dir%/.env` — parameter references are resolved by the kernel, and a relative path is taken from the project directory |
+| `path` | The base `.env` path; default `%kernel.project_dir%/.env` — the token is resolved against the project directory by `base_path()`, every other parameter reference by the kernel, and a relative path is taken from the project directory |
 | `env_key` | The variable naming the active environment |
 | `debug_key` | The variable naming debug mode |
+| `default_env` | The environment the cascade settles on when the environment key names none |
 | `test_envs` | Environments where the `.local` overlay is skipped |
-| `prod_envs` | Environments considered production, used for debug defaulting |
+| `prod_envs` | Environments declared production — read by `boot_env`'s undeclared-environment warning and the `debug:dotenv` report |
+| `debug_envs` | Environments where `boot_env` leaves debug on by default; everywhere else it stays off |
 
 ### Commands
 
 | Command | What it does |
 | --- | --- |
-| `dotenv:dump [env]` | Compile the cascade for `env` (default: the kernel's env) into `<path>.local.json`. Runs on a fresh environ with only the env key, so real environment variables never land in the dump — but the `.local` files do, so gitignore it |
-| `debug:dotenv [name] [--show-values]` | Report the environment, whether it is production (`prod_envs`) and the debug flag (`debug_key`), list the files the loader's own cascade considers (loaded / missing) and each variable's value per file, filtered by `name` when given. Values are masked unless `--show-values` is passed |
+| `dotenv:dump [env]` | Compile the cascade for `env` (default: the kernel's env) into `<path>.local.json`, stamped with the `default_env` and `test_envs` it was compiled from — `boot_env` refuses a dump whose stamp no longer matches. Runs on a fresh environ with only the env key, so real environment variables never land in the dump — but the `.local` files do, so gitignore it |
+| `debug:dotenv [name] [--show-values]` | Report the environment, the default environment, whether it is production (`prod_envs`) and the debug flag (`debug_key`) — decided by the loader the config itself builds — then list the files the loader's own cascade considers (loaded / missing) and each variable's value per file, filtered by `name` when given. Values are masked unless `--show-values` is passed |
 
 The commands are only registered when the console bundle is active — xtr-console installed
 beside the package; on a headless application the bundle is still valid and boots at zero

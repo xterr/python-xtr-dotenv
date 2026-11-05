@@ -11,8 +11,9 @@ model from the same layers without ever writing into `os.environ`.
 
 ## Quick reference
 
-- Entry point, first line: `Dotenv().boot_env(str(PROJECT_DIR / ".env"))`. Before the kernel,
-  before any settings model, before anything reads a variable.
+- Entry point, first line: `DOTENV.boot(PROJECT_DIR)`, with `DOTENV` from
+  `config/packages/dotenv.py` — the one description of the cascade. Before the kernel, before
+  any settings model, before anything reads a variable.
 - Layers, later wins: `.env` → `.env.local` → `.env.{env}` → `.env.{env}.local`. A real
   environment variable beats all of them.
 - A typed model: subclass `DotenvSettings`, set the `_dotenv_*` class variables.
@@ -50,14 +51,36 @@ or a mounted file, never in a committed layer.
 ## Load at the entry point
 
 ```python
+# <app>/config/packages/dotenv.py — the recipe writes this
+from typing import Final
+
+from xtr_dependency_injection import configure
+from xtr_dotenv.bundle import DotenvConfig
+
+DOTENV: Final = DotenvConfig(
+    path="%kernel.project_dir%/.env",
+    env_key="APP_ENV",
+    debug_key="APP_DEBUG",
+    default_env="dev",
+    test_envs=("test",),
+    prod_envs=("prod",),
+    debug_envs=("dev", "local", "test"),
+)
+
+
+@configure
+def dotenv() -> DotenvConfig:
+    """Hand the container the one cascade description."""
+    return DOTENV
+```
+
+```python
 # <app>/__main__.py
-from xtr_dotenv import Dotenv
+from app.config.packages.dotenv import DOTENV
 
 
 def main() -> None:
-    Dotenv(env_key="APP_ENV", debug_key="APP_DEBUG").set_prod_envs(("prod",)).boot_env(
-        str(PROJECT_DIR / ".env"), default_env="dev", test_envs=("test",)
-    )
+    DOTENV.boot(PROJECT_DIR)
 
     from app.kernel import kernel  # only now — imports read the environment
 
@@ -65,9 +88,13 @@ def main() -> None:
 ```
 
 `boot_env` also writes the debug key as `"1"` or `"0"`: its own value read as a flag
-(`1/true/yes/on`, or a non-zero number) when set, otherwise on in every environment outside
-`prod_envs`. If `<path>.local.json` exists and names the current environment, it is read instead
-of the cascade.
+(`1/true/yes/on`, or a non-zero number) when set, otherwise on only in `debug_envs` — the
+default fails closed. An environment declared nowhere (not the default, not in `debug_envs`,
+`test_envs` or `prod_envs`) gets `"0"` plus a one-time `RuntimeWarning` naming the remedies:
+set the debug key explicitly, or declare the environment. If `<path>.local.json` exists, names
+the current environment and was compiled from the same description — the dump stamps the
+`default_env` and `test_envs` it was built with — it is read instead of the cascade; a dump
+with a different stamp is refused, with a warning, and the cascade runs.
 
 Other calls on the loader:
 
@@ -141,8 +168,8 @@ is read once. To place the source yourself in `settings_customise_sources`, use
 
 | Command | Does |
 | --- | --- |
-| `dotenv:dump [env]` | Compile the cascade for `env` (default: the kernel's) into `<path>.local.json`, which `boot_env` then reads instead of the files. Computed on a fresh environ holding only the env key, so no real variable lands in it — the `.local` layers do, so keep it out of git |
-| `debug:dotenv [name] [--show-values]` | Report the environment, whether it is production (`prod_envs`) and the debug flag (`debug_key`), then list every cascade file as loaded or missing and each variable's value per file, filtered to `name` when given. Values are masked unless `--show-values` |
+| `dotenv:dump [env]` | Compile the cascade for `env` (default: the kernel's) into `<path>.local.json`, stamped with the `default_env` and `test_envs` it was compiled from — `boot_env` refuses a dump whose stamp no longer matches. Computed on a fresh environ holding only the env key, so no real variable lands in it — the `.local` layers do, so keep it out of git |
+| `debug:dotenv [name] [--show-values]` | Report the environment, the default environment, whether it is production (`prod_envs`) and the debug flag (`debug_key`) — decided by the loader the config itself builds — then list every cascade file as loaded or missing and each variable's value per file, filtered to `name` when given. Values are masked unless `--show-values` |
 
 Both need `DotenvBundle` and an active console bundle.
 
@@ -169,38 +196,50 @@ def test_the_cascade_fills_in_a_default(tmp_path) -> None:
 ## Use in an application
 
 `uv run xtr-recipes recipes:sync` applies the recipe shipped with this package: it lists
-`DotenvBundle`, writes `APP_ENV` in `.env`, and ignores the per-machine `.env.local` files. That is
-the steps below a recipe can do; the load step it prints for you to make.
+`DotenvBundle`, writes `config/packages/dotenv.py`, writes `APP_ENV` in `.env`, and ignores the
+per-machine `.env.local` files. That is the steps below a recipe can do; the load step it
+prints for you to make.
 
 1. **Install** — `uv add xtr-dotenv xtr-dependency-injection`: the bundle needs the container
    installed beside it, never as an extra. Plain `xtr-dotenv` is the loader and the settings
    source; install xtr-console beside it for the two commands.
-2. **Load** — the bundle loads nothing. Call `Dotenv().boot_env(...)` at the top of *every*
-   entry point, before the kernel is built.
+2. **Load** — the bundle loads nothing. Call `DOTENV.boot(PROJECT_DIR)` at the top of *every*
+   entry point, before the kernel is built; `DOTENV` comes from `config/packages/dotenv.py`.
 3. **Activate** — `DotenvBundle: {"all": True}` in `BUNDLES` in `<app>/config/bundles.py`
    (`from xtr_dotenv.bundle import DotenvBundle`). It only contributes the commands.
 4. **Brings along** — nothing.
-5. **Configure** — optional; by default the base file is `%kernel.project_dir%/.env` and the
-   environment comes from `APP_ENV`:
+5. **Configure** — `config/packages/dotenv.py`, written by the recipe; it holds the one
+   description as a `DOTENV` constant the entry point boots from and the `@configure`
+   function hands to the container:
 
    ```python
    # <app>/config/packages/dotenv.py
+   from typing import Final
+
    from xtr_dependency_injection import configure
    from xtr_dotenv.bundle import DotenvConfig
 
 
+   DOTENV: Final = DotenvConfig(
+       path="%kernel.project_dir%/.env",
+       env_key="APP_ENV",
+       debug_key="APP_DEBUG",
+       default_env="dev",
+       test_envs=("test",),
+       prod_envs=("prod",),
+       debug_envs=("dev", "local", "test"),
+   )
+
+
    @configure
    def dotenv() -> DotenvConfig:
-       return DotenvConfig(
-           path="%kernel.project_dir%/.env",
-           env_key="APP_ENV",
-           debug_key="APP_DEBUG",
-           test_envs=("test",),
-           prod_envs=("prod",),
-       )
+       """Hand the container the one cascade description."""
+       return DOTENV
    ```
 
-   Keep these fields and the `boot_env(...)` arguments in step — share constants between the two.
+   `debug_envs` are the environments where `boot` leaves the debug key on by default; an
+   explicit debug key always wins, and an environment declared nowhere gets debug off plus a
+   one-time `RuntimeWarning`.
 6. **Environment** — commit a `.env` with the defaults every machine shares, e.g. `APP_ENV=dev`.
    The commands describe that cascade; they do not replace step 2.
 7. **Ignore** — add `.env.local`, `.env.*.local` and `.env.local.json` to `.gitignore`.
@@ -218,7 +257,7 @@ All derive from `DotenvError` and carry typed attributes:
 | --- | --- |
 | `FormatError` | A line cannot be parsed, a key has no `=`, an overlay names another environment (`.path`, `.line`, `.reason`) |
 | `InvalidArgumentError` | A `DotenvConfig` field is empty (`.reason`) |
-| `PathError` | A file cannot be read, or the dump written (`.path`) |
+| `PathError` | A file cannot be read — the cascade's base file included, raised by `DotenvSettings` — or the dump written (`.path`) |
 | `VariableCircularReferenceError` | Values wait on each other forever (`.names`) |
 
 `FormatError`, `InvalidArgumentError` and `VariableCircularReferenceError` are also `ValueError`s;
@@ -228,6 +267,8 @@ All derive from `DotenvError` and carry typed attributes:
 
 - Do not call `boot_env` after importing the kernel or a settings model — they read the
   environment as they import.
+- Do not describe the cascade twice — one `DOTENV` object in `config/packages/dotenv.py` feeds
+  the entry point, the commands and the settings model; constants kept beside it drift.
 - Do not commit `.env.local`, `.env.*.local` or `.env.local.json`, and do not put a real secret
   in a committed layer.
 - Do not expect the bundle to load files; it only adds the commands.
