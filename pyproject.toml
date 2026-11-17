@@ -1,6 +1,6 @@
 [project]
 name = "xtr-dotenv"
-version = "6.8.1"
+version = "7.0.0"
 description = "Layered .env files loaded into the environment, and the same layers behind a typed settings model."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -43,8 +43,8 @@ dev = [
     "pytest-cov>=5",
     "anyio>=4.0",
     "ty>=0.0.83",
-    "xtr-dependency-injection>=6.0,<7",
-    "xtr-console>=6.0,<7",
+    "xtr-dependency-injection>=7.0,<8",
+    "xtr-console>=7.0,<8",
 ]
 
 [build-system]
