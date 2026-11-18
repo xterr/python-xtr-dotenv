@@ -4,7 +4,7 @@
 
 **Layered `.env` files loaded into the environment, and the same layers behind a typed settings model.**
 
-<img alt="python 3.11+" src="https://img.shields.io/badge/python-%E2%89%A5%203.11-3776AB?logo=python&logoColor=white">
+<img alt="python 3.14+" src="https://img.shields.io/badge/python-%E2%89%A5%203.14-3776AB?logo=python&logoColor=white">
 <img alt="typed" src="https://img.shields.io/badge/typed-ty%20%2B%20basedpyright-1f6feb">
 <img alt="license MIT" src="https://img.shields.io/badge/license-MIT-blue">
 
@@ -40,7 +40,7 @@ uv add xtr-dotenv xtr-dependency-injection  # + the container, for the DotenvBun
 uv add xtr-console                          # beside it: + the dotenv:dump and debug:dotenv commands
 ```
 
-Requires Python 3.11+. Depends on `pydantic-settings`, `python-dotenv`, `typing-extensions` and
+Requires Python 3.14.4+. Depends on `pydantic-settings`, `python-dotenv` and
 `anyio` — not on the container: the bundle is used when
 [xtr-dependency-injection](../xtr-dependency-injection) is installed beside the package, never as
 an extra, and the loader works without it. The two commands also need

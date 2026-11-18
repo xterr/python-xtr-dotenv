@@ -16,7 +16,7 @@ over a file, and a caller-supplied value wins over both.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, ClassVar, cast
+from typing import TYPE_CHECKING, ClassVar, cast, override
 
 from pydantic_settings import BaseSettings
 
@@ -46,6 +46,7 @@ class DotenvSettings(BaseSettings):
     _dotenv_default_env: ClassVar[str] = "dev"
     _dotenv_test_envs: ClassVar[tuple[str, ...]] = ("test",)
 
+    @override
     @classmethod
     def settings_customise_sources(
         cls,

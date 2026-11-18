@@ -13,9 +13,8 @@ active, so a headless application still boots to zero config.
 
 from __future__ import annotations
 
-from typing import final
+from typing import final, override
 
-from typing_extensions import override
 from xtr_dependency_injection import (
     Bundle,
     ContainerBuilder,

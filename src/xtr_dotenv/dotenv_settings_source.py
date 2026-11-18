@@ -13,10 +13,9 @@ misconfiguration to surface, not an empty model.
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, final
+from typing import TYPE_CHECKING, final, override
 
 from pydantic_settings import EnvSettingsSource
-from typing_extensions import override
 
 from xtr_dotenv.dotenv import PATH_VAR, TRACKING_VAR, Dotenv
 

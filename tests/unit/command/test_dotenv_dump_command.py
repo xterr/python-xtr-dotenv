@@ -5,7 +5,7 @@ from __future__ import annotations
 import io
 import json
 import os
-from typing import TYPE_CHECKING, cast, final
+from typing import TYPE_CHECKING, cast, final, override
 
 import pytest
 from xtr_console import ConsoleStyle, ExitCode
@@ -32,30 +32,37 @@ class _FakeKernel(KernelInterface):
         self._report = KernelReport()
 
     @property
+    @override
     def name(self) -> str:
         return "test"
 
     @property
+    @override
     def package(self) -> str:
         return "test"
 
     @property
+    @override
     def environment(self) -> str:
         return self._environment
 
     @property
+    @override
     def debug(self) -> bool:
         return False
 
     @property
+    @override
     def project_dir(self) -> Path:
         return self._project_dir
 
     @property
+    @override
     def bundles(self) -> tuple[str, ...]:
         return ("kernel",)
 
     @property
+    @override
     def report(self) -> KernelReport:
         return self._report
 
