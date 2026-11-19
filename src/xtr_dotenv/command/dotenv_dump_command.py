@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from pathlib import Path
 from typing import Final, final
 
-import anyio.to_thread
 from xtr_console import ConsoleStyle, ExitCode, as_command
 from xtr_dependency_injection import (  # noqa: TC002 — engine reads annotations at runtime.
     Injected,
@@ -68,7 +68,7 @@ class DotenvDumpCommand:
         }
         dump_path = Path(f"{base_path}.local.json")
         content = json.dumps(payload, indent=2, sort_keys=True)
-        await anyio.to_thread.run_sync(_write, dump_path, content)
+        await asyncio.to_thread(_write, dump_path, content)
         io.success(f"wrote {dump_path} ({len(payload)} values)")
         return ExitCode.SUCCESS
 

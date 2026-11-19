@@ -40,8 +40,8 @@ uv add xtr-dotenv xtr-dependency-injection  # + the container, for the DotenvBun
 uv add xtr-console                          # beside it: + the dotenv:dump and debug:dotenv commands
 ```
 
-Requires Python 3.14.4+. Depends on `pydantic-settings`, `python-dotenv` and
-`anyio` — not on the container: the bundle is used when
+Requires Python 3.14.4+. Depends on `pydantic-settings` and `python-dotenv` — not on the
+container: the bundle is used when
 [xtr-dependency-injection](../xtr-dependency-injection) is installed beside the package, never as
 an extra, and the loader works without it. The two commands also need
 [xtr-console](../xtr-console) installed beside it.

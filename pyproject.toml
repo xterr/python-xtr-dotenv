@@ -19,7 +19,6 @@ classifiers = [
 dependencies = [
     "pydantic-settings>=2.12,<3",
     "python-dotenv>=1.2.2,<2",
-    "anyio>=4.10",
 ]
 
 # Advertises the bundle so debug:bundles can name it when installed but not listed.
