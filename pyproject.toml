@@ -38,8 +38,8 @@ dev = [
     "pytest-cov>=7.1",
     "anyio>=4.10",
     "ty>=0.0.83",
-    "xtr-dependency-injection>=7.0,<8",
-    "xtr-console>=7.0,<8",
+    "xtr-dependency-injection>=7.2,<8",
+    "xtr-console>=7.2,<8",
 ]
 
 [build-system]
